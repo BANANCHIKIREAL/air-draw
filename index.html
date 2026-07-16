@@ -1,0 +1,1677 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Air Draw — рисуй пальцами в воздухе</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2305050c'/%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2300f0ff'/%3E%3Cstop offset='.5' stop-color='%23ff2d95'/%3E%3Cstop offset='1' stop-color='%23ffe600'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M10 46 Q22 14 32 30 T54 18' fill='none' stroke='url(%23g)' stroke-width='7' stroke-linecap='round'/%3E%3Ccircle cx='54' cy='18' r='5' fill='%23ffe600'/%3E%3C/svg%3E">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #05050c;
+    overflow: hidden;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    color: #fff;
+    user-select: none;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: -30%;
+    background:
+      radial-gradient(circle at 20% 30%, rgba(0,240,255,.10), transparent 40%),
+      radial-gradient(circle at 80% 70%, rgba(255,45,149,.10), transparent 40%),
+      radial-gradient(circle at 60% 20%, rgba(124,255,0,.06), transparent 40%);
+    animation: bgFloat 16s ease-in-out infinite alternate;
+    z-index: -1;
+  }
+  @keyframes bgFloat {
+    from { transform: translate(0,0) rotate(0deg); }
+    to   { transform: translate(4%, -3%) rotate(4deg); }
+  }
+
+  #stage {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: #000;
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,.08),
+      0 0 80px rgba(0, 240, 255, .14),
+      0 0 160px rgba(255, 45, 149, .10);
+  }
+  #cam {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    transform: scaleX(-1);
+    filter: brightness(.5) saturate(.85);
+  }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+  /* ---------- стеклянные панели ---------- */
+  .glass {
+    background: rgba(13, 13, 26, .55);
+    border: 1px solid rgba(255,255,255,.14);
+    backdrop-filter: blur(10px);
+    border-radius: 16px;
+  }
+
+  #logo {
+    position: absolute; top: 14px; left: 16px;
+    z-index: 6;
+    font-size: 19px; font-weight: 800; letter-spacing: 3px;
+    background: linear-gradient(90deg, #00f0ff, #ff2d95, #ffe600);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 0 12px rgba(0,240,255,.5));
+    pointer-events: none;
+  }
+
+  #toolbar {
+    position: absolute; top: 12px; right: 14px;
+    z-index: 6;
+    display: flex; gap: 8px;
+    padding: 8px;
+  }
+  .tbtn {
+    width: 42px; height: 42px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,.15);
+    background: rgba(255,255,255,.06);
+    color: #fff;
+    font-size: 19px;
+    cursor: pointer;
+    display: grid; place-items: center;
+    transition: all .15s;
+    position: relative;
+  }
+  .tbtn:hover { background: rgba(255,255,255,.16); transform: translateY(-2px); }
+  .tbtn.on {
+    background: rgba(0,240,255,.22);
+    border-color: rgba(0,240,255,.7);
+    box-shadow: 0 0 14px rgba(0,240,255,.45);
+  }
+  .tbtn::after {
+    content: attr(data-tip);
+    position: absolute; top: calc(100% + 8px); right: 0;
+    padding: 4px 10px;
+    background: rgba(5,5,15,.9);
+    border: 1px solid rgba(255,255,255,.15);
+    border-radius: 8px;
+    font-size: 12px; white-space: nowrap;
+    opacity: 0; pointer-events: none;
+    transition: opacity .15s;
+  }
+  .tbtn:hover::after { opacity: 1; }
+
+  /* ---------- палитра ---------- */
+  #palette {
+    position: absolute;
+    left: 12px; top: 50%;
+    transform: translateY(-50%);
+    display: flex; flex-direction: column; gap: 10px;
+    z-index: 6;
+    padding: 12px 10px;
+  }
+  .swatch {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    border: 3px solid rgba(255,255,255,.22);
+    cursor: pointer;
+    display: grid; place-items: center;
+    font-size: 18px;
+    transition: transform .18s cubic-bezier(.34,1.56,.64,1), border-color .15s, box-shadow .15s;
+  }
+  .swatch:hover { transform: scale(1.12); }
+  .swatch.active {
+    border-color: #fff;
+    transform: scale(1.22);
+    box-shadow: 0 0 20px var(--c, #fff);
+  }
+
+  /* ---------- кисти ---------- */
+  #brushes {
+    position: absolute;
+    left: 12px; bottom: 16px;
+    z-index: 6;
+    display: flex; gap: 8px;
+    padding: 8px;
+  }
+  .bbtn {
+    height: 42px;
+    padding: 0 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,.15);
+    background: rgba(255,255,255,.06);
+    color: #fff;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 7px;
+    transition: all .15s;
+  }
+  .bbtn:hover { background: rgba(255,255,255,.16); }
+  .bbtn.active {
+    background: rgba(255,45,149,.22);
+    border-color: rgba(255,45,149,.7);
+    box-shadow: 0 0 14px rgba(255,45,149,.4);
+  }
+
+  /* ---------- слайдер размера ---------- */
+  #sizer {
+    position: absolute;
+    right: 14px; top: 50%;
+    transform: translateY(-50%);
+    z-index: 6;
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    padding: 14px 10px;
+  }
+  #sizerTrack {
+    width: 12px; height: 170px;
+    border-radius: 8px;
+    background: rgba(255,255,255,.12);
+    position: relative;
+    cursor: pointer;
+  }
+  #sizerFill {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    border-radius: 8px;
+    background: linear-gradient(to top, #00f0ff, #ff2d95);
+    pointer-events: none;
+  }
+  #sizerKnob {
+    position: absolute; left: 50%;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: #fff;
+    transform: translate(-50%, 50%);
+    box-shadow: 0 0 14px rgba(0,240,255,.8);
+    pointer-events: none;
+  }
+  #brushPrev {
+    border-radius: 50%;
+    transition: width .12s, height .12s;
+    min-width: 4px; min-height: 4px;
+  }
+  #sizer .lbl { font-size: 11px; color: rgba(255,255,255,.6); letter-spacing: 1px; }
+
+  /* ---------- статус и тосты ---------- */
+  #status {
+    position: absolute;
+    left: 50%; bottom: 16px;
+    transform: translateX(-50%);
+    padding: 11px 26px;
+    font-size: 17px;
+    letter-spacing: .3px;
+    white-space: nowrap;
+    z-index: 6;
+    border-radius: 999px;
+    transition: box-shadow .25s;
+  }
+  #toast {
+    position: absolute;
+    left: 50%; top: 70px;
+    transform: translateX(-50%) translateY(-8px);
+    padding: 9px 22px;
+    border-radius: 999px;
+    font-size: 15px;
+    z-index: 7;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s, transform .25s;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  #flash {
+    position: absolute; inset: 0;
+    background: radial-gradient(circle, rgba(255,255,255,.9), rgba(255,255,255,.35));
+    opacity: 0; pointer-events: none; z-index: 4;
+  }
+  #flash.go { animation: flashAnim .5s ease-out; }
+  @keyframes flashAnim { 0% { opacity: .8; } 100% { opacity: 0; } }
+
+  /* ---------- запись ---------- */
+  .tbtn.rec {
+    background: rgba(255,45,60,.35);
+    border-color: rgba(255,60,60,.9);
+    animation: recPulse 1.2s ease-in-out infinite;
+  }
+  @keyframes recPulse {
+    0%, 100% { box-shadow: 0 0 8px rgba(255,45,60,.5); }
+    50%      { box-shadow: 0 0 24px rgba(255,45,60,.95); }
+  }
+
+  /* ---------- FPS ---------- */
+  #fps {
+    position: absolute; top: 44px; left: 18px;
+    z-index: 6;
+    font-size: 12px;
+    color: rgba(255,255,255,.55);
+    letter-spacing: .5px;
+    pointer-events: none;
+  }
+
+  /* ---------- фоны ---------- */
+  #bgLayer { position: absolute; inset: 0; display: none; }
+  #bgLayer.on { display: block; }
+  #bgLayer.bg-black { background: #04040a; }
+  #bgLayer.bg-grid {
+    background:
+      linear-gradient(rgba(0,240,255,.13) 1px, transparent 1px) 0 0/100% 42px,
+      linear-gradient(90deg, rgba(0,240,255,.13) 1px, transparent 1px) 0 0/42px 100%,
+      radial-gradient(circle at 50% 130%, rgba(255,45,149,.28), transparent 60%),
+      #04040a;
+  }
+  #bgLayer.bg-space {
+    background:
+      radial-gradient(circle at 20% 30%, rgba(0,240,255,.20), transparent 45%),
+      radial-gradient(circle at 80% 70%, rgba(255,45,149,.20), transparent 45%),
+      radial-gradient(circle at 60% 10%, rgba(124,255,0,.10), transparent 40%),
+      #04040a;
+  }
+
+  /* ---------- версия и автор ---------- */
+  #credits {
+    position: absolute;
+    right: 14px; bottom: 14px;
+    z-index: 6;
+    font-size: 11px;
+    color: rgba(255,255,255,.45);
+    letter-spacing: .6px;
+    pointer-events: none;
+    text-shadow: 0 1px 4px rgba(0,0,0,.8);
+  }
+  #credits b {
+    background: linear-gradient(90deg, #00f0ff, #ff2d95);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    font-weight: 700;
+  }
+  #introCard .ver {
+    margin-top: 16px;
+    font-size: 12px;
+    color: rgba(255,255,255,.45);
+    letter-spacing: 1px;
+  }
+
+  /* ---------- панель настроек ---------- */
+  #settingsPanel {
+    position: absolute;
+    top: 70px; right: 14px;
+    width: 290px;
+    max-height: calc(100% - 96px);
+    overflow-y: auto;
+    z-index: 7;
+    padding: 14px;
+    display: none;
+  }
+  #settingsPanel.open { display: block; }
+  #settingsPanel h3 {
+    font-size: 15px; letter-spacing: 1px;
+    margin-bottom: 8px;
+    color: rgba(255,255,255,.9);
+  }
+  #settingsPanel .sec {
+    font-size: 11px;
+    color: rgba(255,255,255,.5);
+    margin: 12px 0 5px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .srow {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 14px;
+    border: 1px solid transparent;
+    transition: background .12s, border-color .12s;
+  }
+  .srow:hover { background: rgba(255,255,255,.08); }
+  .srow.on {
+    border-color: rgba(0,240,255,.5);
+    background: rgba(0,240,255,.10);
+  }
+  .srow .st {
+    margin-left: auto;
+    opacity: .75;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  /* ---------- обратный отсчёт фото ---------- */
+  #countdown {
+    position: absolute; inset: 0;
+    display: grid; place-items: center;
+    font-size: 170px; font-weight: 800;
+    color: #fff;
+    text-shadow: 0 0 40px #00f0ff, 0 0 90px #ff2d95;
+    z-index: 8;
+    pointer-events: none;
+  }
+  #countdown.pop { animation: cdPop 1s ease-out; }
+  @keyframes cdPop {
+    0%   { transform: scale(1.7); opacity: 1; }
+    100% { transform: scale(.85); opacity: .2; }
+  }
+
+  /* ---------- турбо-режим ---------- */
+  body.perf::before { display: none; }
+  body.perf .glass { backdrop-filter: none; background: rgba(13,13,26,.85); }
+  body.perf #cam { filter: none; opacity: .5; }
+
+  /* ---------- интро ---------- */
+  #intro {
+    position: absolute; inset: 0;
+    z-index: 10;
+    display: grid; place-items: center;
+    background: rgba(4,4,12,.72);
+    backdrop-filter: blur(8px);
+    transition: opacity .5s;
+  }
+  #intro.hidden { opacity: 0; pointer-events: none; }
+  #introCard {
+    padding: 34px 44px;
+    text-align: center;
+    max-width: 480px;
+  }
+  #introCard h1 {
+    font-size: 34px; font-weight: 800; letter-spacing: 4px;
+    background: linear-gradient(90deg, #00f0ff, #ff2d95, #ffe600);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    margin-bottom: 6px;
+  }
+  #introCard .sub { color: rgba(255,255,255,.65); margin-bottom: 24px; font-size: 15px; }
+  .gestRow {
+    display: flex; align-items: center; gap: 16px;
+    padding: 9px 0;
+    font-size: 16px; text-align: left;
+    border-bottom: 1px solid rgba(255,255,255,.07);
+  }
+  .gestRow:last-of-type { border-bottom: none; }
+  .gestRow .ico { font-size: 26px; width: 40px; text-align: center; flex-shrink: 0; }
+  #introCard .go {
+    margin-top: 22px;
+    font-size: 15px;
+    color: #00f0ff;
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+</style>
+</head>
+<body>
+<div id="stage">
+  <video id="cam" playsinline muted></video>
+  <div id="bgLayer"></div>
+  <canvas id="draw"></canvas>
+  <canvas id="hud"></canvas>
+
+  <div id="logo">✦ AIR DRAW</div>
+  <div id="fps"></div>
+  <div id="credits">v1.0.0 · by <b>BANANCHIKIREAL</b></div>
+
+  <div id="toolbar" class="glass">
+    <button class="tbtn" id="btnPerf"    data-tip="Турбо-режим: максимум FPS (T)">⚡</button>
+    <button class="tbtn" id="btnUndo"    data-tip="Отменить штрих (Z / 👍)">↩️</button>
+    <button class="tbtn" id="btnMirror"  data-tip="Зеркальный режим (M)">🪞</button>
+    <button class="tbtn" id="btnSparkle" data-tip="Искры (E)">✨</button>
+    <button class="tbtn" id="btnShape"   data-tip="Магия фигур: ровные круги и линии (F)">📐</button>
+    <button class="tbtn" id="btnCam"     data-tip="Сменить фон (V)">🖼️</button>
+    <button class="tbtn" id="btnRec"     data-tip="Запись видео (R)">⏺</button>
+    <button class="tbtn" id="btnShot"    data-tip="Фото с таймером 3 сек (P)">📸</button>
+    <button class="tbtn" id="btnClear"   data-tip="Стереть всё (C / 🖐 взмах)">🗑️</button>
+    <button class="tbtn" id="btnSave"    data-tip="Сохранить PNG (S)">💾</button>
+    <button class="tbtn" id="btnSettings" data-tip="Настройки (O)">⚙️</button>
+  </div>
+
+  <div id="settingsPanel" class="glass"></div>
+
+  <div id="palette" class="glass"></div>
+
+  <div id="brushes" class="glass">
+    <button class="bbtn active" data-brush="neon">🖊️ Неон</button>
+    <button class="bbtn" data-brush="marker">🖍️ Маркер</button>
+    <button class="bbtn" data-brush="spray">🌫️ Спрей</button>
+    <button class="bbtn" data-brush="laser">🔴 Лазер</button>
+  </div>
+
+  <div id="sizer" class="glass">
+    <div class="lbl">КИСТЬ</div>
+    <div id="sizerTrack">
+      <div id="sizerFill"></div>
+      <div id="sizerKnob"></div>
+    </div>
+    <div id="brushPrev"></div>
+  </div>
+
+  <div id="toast" class="glass"></div>
+  <button style="display:none" id="saveBtn"></button>
+  <div id="flash"></div>
+  <div id="status" class="glass">⏳ Загружаю нейронку…</div>
+
+  <div id="intro">
+    <div id="introCard" class="glass">
+      <h1>✦ AIR DRAW</h1>
+      <div class="sub">Рисуй в воздухе руками — камера всё видит</div>
+      <div class="gestRow"><span class="ico">☝️</span><span>Один палец — <b>рисовать</b> (работают обе руки!)</span></div>
+      <div class="gestRow"><span class="ico">✌️</span><span>Два пальца — <b>ластик</b></span></div>
+      <div class="gestRow"><span class="ico">🖐</span><span>Взмах ладонью — <b>стереть всё</b></span></div>
+      <div class="gestRow"><span class="ico">👍</span><span>Большой палец — <b>держи</b>, кольцо заполнится и штрих отменится</span></div>
+      <div class="gestRow"><span class="ico">🎨</span><span>Палитра, кисти и слайдер — тыкай пальцем, над меню рисование выключается</span></div>
+      <div class="go">Покажи руку в камеру, чтобы начать ▸</div>
+      <div class="ver">v1.0.0 · автор: BANANCHIKIREAL</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const video    = document.getElementById('cam');
+const drawCv   = document.getElementById('draw');
+const hudCv    = document.getElementById('hud');
+const stage    = document.getElementById('stage');
+const statusEl = document.getElementById('status');
+const flashEl  = document.getElementById('flash');
+const toastEl  = document.getElementById('toast');
+const introEl  = document.getElementById('intro');
+const dctx = drawCv.getContext('2d');
+const hctx = hudCv.getContext('2d');
+
+/* ================= палитра ================= */
+const COLORS = ['#00f0ff', '#ff2d95', '#7cff00', '#ffe600', '#ff7a00', '#b26bff', '#ffffff'];
+let currentColor = COLORS[0];
+let rainbow = false;
+let hue = 0;
+
+const paletteEl = document.getElementById('palette');
+const swatches = [];
+COLORS.forEach(c => addSwatch(c, false, c, ''));
+addSwatch(null, true, 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)', '🌈');
+
+function addSwatch(color, isRainbow, bg, txt) {
+  const el = document.createElement('div');
+  el.className = 'swatch';
+  el.style.background = bg;
+  el.style.setProperty('--c', color || '#fff');
+  el.textContent = txt;
+  el.onclick = () => selectColor(color, isRainbow, el);
+  paletteEl.appendChild(el);
+  swatches.push({ el, color, rainbow: isRainbow });
+}
+function selectColor(c, isRainbow, el, silent) {
+  const changed = !el.classList.contains('active');
+  rainbow = isRainbow;
+  if (c) currentColor = c;
+  swatches.forEach(s => s.el.classList.toggle('active', s.el === el));
+  updateBrushPrev();
+  if (changed && !silent) tone(700, .05, .12);
+}
+
+/* ================= размер кисти ================= */
+let brushSize = 8;
+const sizerEl   = document.getElementById('sizer');
+const trackEl   = document.getElementById('sizerTrack');
+const fillEl    = document.getElementById('sizerFill');
+const knobEl    = document.getElementById('sizerKnob');
+const brushPrev = document.getElementById('brushPrev');
+const SIZE_MIN = 2, SIZE_MAX = 26;
+
+function setBrushSize(v) {
+  brushSize = Math.max(SIZE_MIN, Math.min(SIZE_MAX, v));
+  const k = (brushSize - SIZE_MIN) / (SIZE_MAX - SIZE_MIN);
+  fillEl.style.height = (k * 100) + '%';
+  knobEl.style.bottom = (k * 100) + '%';
+  updateBrushPrev();
+}
+function updateBrushPrev() {
+  const d = Math.max(4, brushSize * 1.6);
+  brushPrev.style.width = d + 'px';
+  brushPrev.style.height = d + 'px';
+  const c = rainbow ? '#ff2d95' : currentColor;
+  brushPrev.style.background = c;
+  brushPrev.style.boxShadow = `0 0 14px ${c}`;
+}
+function sizeFromY(clientY) {
+  const r = trackEl.getBoundingClientRect();
+  const k = 1 - Math.max(0, Math.min(1, (clientY - r.top) / r.height));
+  setBrushSize(SIZE_MIN + k * (SIZE_MAX - SIZE_MIN));
+}
+let sizerDrag = false;
+trackEl.addEventListener('pointerdown', e => { sizerDrag = true; sizeFromY(e.clientY); });
+window.addEventListener('pointermove', e => { if (sizerDrag) sizeFromY(e.clientY); });
+window.addEventListener('pointerup', () => sizerDrag = false);
+setBrushSize(8);
+selectColor(COLORS[0], false, swatches[0].el, true);
+
+/* ================= кисти ================= */
+let brushType = 'neon';
+const brushBtns = [...document.querySelectorAll('.bbtn')];
+const BRUSH_NAMES = { neon: '🖊️ Неон', marker: '🖍️ Маркер', spray: '🌫️ Спрей', laser: '🔴 Лазер (тает сам)' };
+function selectBrush(type, silent) {
+  if (brushType === type) return;
+  brushType = type;
+  brushBtns.forEach(b => b.classList.toggle('active', b.dataset.brush === type));
+  if (!silent) { toast(BRUSH_NAMES[type]); tone(600, .05, .12); }
+}
+brushBtns.forEach(b => b.onclick = () => selectBrush(b.dataset.brush));
+
+function drawSeg(a, b, color, width) {
+  if (brushType === 'marker') {
+    dctx.save();
+    dctx.globalAlpha = .3;
+    dctx.strokeStyle = color;
+    dctx.lineCap = 'round';
+    dctx.lineJoin = 'round';
+    dctx.lineWidth = width * 2.4;
+    dctx.beginPath();
+    dctx.moveTo(a.x, a.y);
+    dctx.lineTo(b.x, b.y);
+    dctx.stroke();
+    dctx.restore();
+  } else if (brushType === 'spray') {
+    const d = dist(a, b), steps = Math.max(1, Math.ceil(d / 4));
+    dctx.save();
+    dctx.fillStyle = color;
+    dctx.globalAlpha = .8;
+    for (let i = 0; i < steps; i++) {
+      const t = i / steps, cx = a.x + (b.x - a.x) * t, cy = a.y + (b.y - a.y) * t;
+      for (let j = 0; j < 3; j++) {
+        const ang = Math.random() * Math.PI * 2, rr = Math.random() * width * 1.7;
+        dctx.beginPath();
+        dctx.arc(cx + Math.cos(ang) * rr, cy + Math.sin(ang) * rr, Math.random() * 1.6 + .6, 0, Math.PI * 2);
+        dctx.fill();
+      }
+    }
+    dctx.restore();
+  } else {
+    strokeSeg(a, b, color, width, false);
+  }
+}
+
+/* ================= режимы ================= */
+let mirrorMode = false;
+let sparkleMode = true;
+
+const btnMirror  = document.getElementById('btnMirror');
+const btnSparkle = document.getElementById('btnSparkle');
+btnMirror.onclick  = () => { mirrorMode = !mirrorMode; btnMirror.classList.toggle('on', mirrorMode); toast(mirrorMode ? '🪞 Зеркало включено' : '🪞 Зеркало выключено'); };
+btnSparkle.onclick = () => { sparkleMode = !sparkleMode; btnSparkle.classList.toggle('on', sparkleMode); toast(sparkleMode ? '✨ Искры включены' : '✨ Искры выключены'); };
+btnSparkle.classList.add('on');
+
+/* ---------- турбо-режим ---------- */
+let perfMode = false;
+let activeLandmarker = null;   // сюда попадёт нейронка после загрузки
+const btnPerf = document.getElementById('btnPerf');
+btnPerf.onclick = () => applyPerf(!perfMode, false);
+function applyPerf(on, silent) {
+  perfMode = on;
+  btnPerf.classList.toggle('on', on);
+  document.body.classList.toggle('perf', on);
+  if (on) {
+    sparkleMode = false;
+    btnSparkle.classList.remove('on');
+    parts = [];
+  }
+  // одна рука вместо двух — самая большая экономия для нейронки
+  try { if (activeLandmarker) activeLandmarker.setOptions({ numHands: on ? 1 : 2 }); } catch (e) {}
+  // меньше кадр с камеры — быстрее его загрузка в нейронку
+  try {
+    const track = video.srcObject && video.srcObject.getVideoTracks()[0];
+    if (track) track.applyConstraints({
+      width:  { ideal: on ? 640 : 1280 },
+      height: { ideal: on ? 360 : 720 }
+    });
+  } catch (e) {}
+  try { localStorage.setItem('airdraw-perf', on ? '1' : '0'); } catch (e) {}
+  if (!silent) toast(on
+    ? '⚡ Турбо: одна рука, без свечения и искр — максимум FPS'
+    : '🎨 Обычный режим: вся красота вернулась');
+}
+
+/* ---------- магия фигур ---------- */
+let shapeMagic = false;
+const btnShape = document.getElementById('btnShape');
+btnShape.onclick = () => {
+  shapeMagic = !shapeMagic;
+  btnShape.classList.toggle('on', shapeMagic);
+  toast(shapeMagic ? '📐 Магия фигур: кривые круги и линии станут идеальными' : '📐 Магия фигур выключена');
+};
+
+/* ---------- фото с таймером ---------- */
+const btnShot = document.getElementById('btnShot');
+let shotBusy = false;
+btnShot.onclick = () => {
+  if (shotBusy) return;
+  shotBusy = true;
+  let n = 3;
+  const el = document.createElement('div');
+  el.id = 'countdown';
+  stage.appendChild(el);
+  const tick = () => {
+    if (n === 0) {
+      el.remove();
+      flashEl.classList.remove('go'); void flashEl.offsetWidth; flashEl.classList.add('go');
+      tone(1200, .15, .2);
+      savePng();
+      shotBusy = false;
+      return;
+    }
+    el.textContent = n;
+    el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+    tone(800, .1, .15);
+    n--;
+    setTimeout(tick, 1000);
+  };
+  tick();
+};
+
+/* ---------- фоны ---------- */
+const bgLayer = document.getElementById('bgLayer');
+const BG_MODES = [
+  { id: 'cam',   name: '📷 Камера' },
+  { id: 'black', name: '⬛ Чёрный холст' },
+  { id: 'grid',  name: '🔷 Неоновая сетка' },
+  { id: 'space', name: '🌌 Космос' }
+];
+let bgIndex = 0;
+const btnCam = document.getElementById('btnCam');
+btnCam.onclick = () => {
+  bgIndex = (bgIndex + 1) % BG_MODES.length;
+  const m = BG_MODES[bgIndex];
+  bgLayer.className = m.id === 'cam' ? '' : 'on bg-' + m.id;
+  btnCam.classList.toggle('on', m.id !== 'cam');
+  toast('Фон: ' + m.name);
+};
+
+// рисует текущий фон в контекст (для записи видео и сохранения PNG)
+function drawBgTo(ctx) {
+  const mode = BG_MODES[bgIndex].id;
+  ctx.fillStyle = '#04040a';
+  ctx.fillRect(0, 0, W, H);
+  if (mode === 'cam') {
+    ctx.save();
+    ctx.translate(W, 0); ctx.scale(-1, 1);
+    try { ctx.drawImage(video, 0, 0, W, H); } catch (e) {}
+    ctx.restore();
+    ctx.fillStyle = 'rgba(0,0,0,.45)';
+    ctx.fillRect(0, 0, W, H);
+  } else if (mode === 'grid') {
+    ctx.strokeStyle = 'rgba(0,240,255,.14)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < W; x += 42) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+    for (let y = 0; y < H; y += 42) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+  } else if (mode === 'space') {
+    let g = ctx.createRadialGradient(W * .2, H * .3, 0, W * .2, H * .3, W * .5);
+    g.addColorStop(0, 'rgba(0,240,255,.20)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    g = ctx.createRadialGradient(W * .8, H * .7, 0, W * .8, H * .7, W * .5);
+    g.addColorStop(0, 'rgba(255,45,149,.20)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+}
+
+/* ---------- запись видео ---------- */
+let recorder = null, recChunks = [], recCtx = null, recRAF = 0;
+const btnRec = document.getElementById('btnRec');
+btnRec.onclick = toggleRec;
+function toggleRec() {
+  if (recorder) { stopRec(); return; }
+  try {
+    const recCv = document.createElement('canvas');
+    recCv.width = W; recCv.height = H;
+    recCtx = recCv.getContext('2d');
+    const stream = recCv.captureStream(30);
+    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
+    recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6000000 });
+    recChunks = [];
+    recorder.ondataavailable = e => { if (e.data.size) recChunks.push(e.data); };
+    recorder.onstop = () => {
+      const blob = new Blob(recChunks, { type: 'video/webm' });
+      const a = document.createElement('a');
+      a.download = 'air-draw.webm';
+      a.href = URL.createObjectURL(blob);
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      toast('🎥 Видео сохранено в загрузки');
+    };
+    recorder.start();
+    btnRec.classList.add('rec');
+    toast('⏺ Запись пошла! Нажми ещё раз, чтобы остановить');
+    (function recLoop() {
+      if (!recorder) return;
+      drawBgTo(recCtx);
+      recCtx.drawImage(drawCv, 0, 0, drawCv.width, drawCv.height, 0, 0, recCtx.canvas.width, recCtx.canvas.height);
+      recCtx.drawImage(hudCv, 0, 0, hudCv.width, hudCv.height, 0, 0, recCtx.canvas.width, recCtx.canvas.height);
+      recRAF = requestAnimationFrame(recLoop);
+    })();
+  } catch (e) {
+    recorder = null;
+    toast('❌ Запись не поддерживается этим браузером');
+  }
+}
+function stopRec() {
+  cancelAnimationFrame(recRAF);
+  const r = recorder;
+  recorder = null;
+  r.stop();
+  btnRec.classList.remove('rec');
+}
+
+document.getElementById('btnUndo').onclick  = undo;
+document.getElementById('btnClear').onclick = () => clearAll(true);
+document.getElementById('btnSave').onclick  = savePng;
+
+/* ---------- настройки ---------- */
+const TB_BUTTONS = [
+  { id: 'btnPerf',    label: '⚡ Турбо-режим',      toggle: true },
+  { id: 'btnUndo',    label: '↩️ Отменить штрих',   toggle: false },
+  { id: 'btnMirror',  label: '🪞 Зеркальный режим', toggle: true },
+  { id: 'btnSparkle', label: '✨ Искры',            toggle: true },
+  { id: 'btnShape',   label: '📐 Магия фигур',      toggle: true },
+  { id: 'btnCam',     label: '🖼️ Сменить фон',      toggle: false },
+  { id: 'btnRec',     label: '⏺ Запись видео',      toggle: true },
+  { id: 'btnShot',    label: '📸 Фото с таймером',  toggle: false },
+  { id: 'btnClear',   label: '🗑️ Стереть всё',      toggle: false },
+  { id: 'btnSave',    label: '💾 Сохранить PNG',    toggle: false }
+];
+const settingsPanel = document.getElementById('settingsPanel');
+const btnSettings = document.getElementById('btnSettings');
+btnSettings.onclick = () => {
+  settingsPanel.classList.toggle('open');
+  btnSettings.classList.toggle('on', settingsPanel.classList.contains('open'));
+  refreshSettings();
+};
+
+const TB_KEY = 'airdraw-toolbar';
+let tbVis = {};
+try { tbVis = JSON.parse(localStorage.getItem(TB_KEY) || '{}'); } catch (e) {}
+function applyTbVis() {
+  for (const b of TB_BUTTONS) {
+    document.getElementById(b.id).style.display = tbVis[b.id] === false ? 'none' : '';
+  }
+}
+function buildSettings() {
+  settingsPanel.innerHTML = '';
+  const h = document.createElement('h3');
+  h.textContent = '⚙️ Настройки';
+  settingsPanel.appendChild(h);
+
+  const sec1 = document.createElement('div');
+  sec1.className = 'sec';
+  sec1.textContent = 'Действия и режимы';
+  settingsPanel.appendChild(sec1);
+  for (const b of TB_BUTTONS) {
+    const row = document.createElement('div');
+    row.className = 'srow';
+    row.dataset.proxy = b.id;
+    row.innerHTML = `<span>${b.label}</span><span class="st"></span>`;
+    row.onclick = () => { document.getElementById(b.id).click(); refreshSettings(); };
+    settingsPanel.appendChild(row);
+  }
+
+  const sec2 = document.createElement('div');
+  sec2.className = 'sec';
+  sec2.textContent = 'Какие кнопки видны на экране';
+  settingsPanel.appendChild(sec2);
+  for (const b of TB_BUTTONS) {
+    const row = document.createElement('div');
+    row.className = 'srow';
+    row.dataset.vis = b.id;
+    row.innerHTML = `<span>${b.label}</span><span class="st"></span>`;
+    row.onclick = () => {
+      tbVis[b.id] = tbVis[b.id] === false;
+      try { localStorage.setItem(TB_KEY, JSON.stringify(tbVis)); } catch (e) {}
+      applyTbVis();
+      refreshSettings();
+    };
+    settingsPanel.appendChild(row);
+  }
+}
+function refreshSettings() {
+  settingsPanel.querySelectorAll('.srow[data-proxy]').forEach(row => {
+    const b = TB_BUTTONS.find(x => x.id === row.dataset.proxy);
+    const on = document.getElementById(b.id).classList.contains('on') ||
+               (b.id === 'btnRec' && !!recorder);
+    row.classList.toggle('on', b.toggle && on);
+    row.querySelector('.st').textContent = b.toggle ? (on ? 'вкл' : 'выкл') : '▶';
+  });
+  settingsPanel.querySelectorAll('.srow[data-vis]').forEach(row => {
+    const hidden = tbVis[row.dataset.vis] === false;
+    row.classList.toggle('on', !hidden);
+    row.querySelector('.st').textContent = hidden ? 'скрыта' : 'на экране';
+  });
+}
+buildSettings();
+applyTbVis();
+
+/* ================= размеры ================= */
+let W = 0, H = 0;
+function resize() {
+  const vw = video.videoWidth || 1280, vh = video.videoHeight || 720;
+  const maxW = window.innerWidth - 24, maxH = window.innerHeight - 24;
+  const k = Math.min(maxW / vw, maxH / vh);
+  W = Math.round(vw * k); H = Math.round(vh * k);
+  stage.style.width = W + 'px';
+  stage.style.height = H + 'px';
+  const dpr = window.devicePixelRatio || 1;
+  let saved = null;
+  if (drawCv.width > 0 && drawCv.height > 0) {
+    saved = document.createElement('canvas');
+    saved.width = drawCv.width; saved.height = drawCv.height;
+    saved.getContext('2d').drawImage(drawCv, 0, 0);
+  }
+  [drawCv, hudCv].forEach(cv => { cv.width = W * dpr; cv.height = H * dpr; });
+  dctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  hctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (saved) dctx.drawImage(saved, 0, 0, saved.width, saved.height, 0, 0, W, H);
+}
+window.addEventListener('resize', resize);
+video.addEventListener('loadeddata', resize);
+resize();
+
+/* ================= звук ================= */
+let ac = null;
+document.addEventListener('click', () => { if (ac && ac.state === 'suspended') ac.resume(); });
+function ensureAc() {
+  ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+  return ac.state !== 'suspended';
+}
+function tone(freq, dur, vol = .15) {
+  try {
+    if (!ensureAc()) return;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'sine'; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur);
+    o.connect(g); g.connect(ac.destination);
+    o.start(); o.stop(ac.currentTime + dur);
+  } catch (e) {}
+}
+function whoosh() {
+  try {
+    if (!ensureAc()) return;
+    const len = ac.sampleRate * 0.35;
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const src = ac.createBufferSource(); src.buffer = buf;
+    const f = ac.createBiquadFilter();
+    f.type = 'bandpass'; f.Q.value = 1.2;
+    f.frequency.setValueAtTime(300, ac.currentTime);
+    f.frequency.exponentialRampToValueAtTime(3000, ac.currentTime + 0.3);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.5, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.35);
+    src.connect(f); f.connect(g); g.connect(ac.destination);
+    src.start();
+  } catch (e) {}
+}
+
+/* ================= тосты ================= */
+let toastTimer = null;
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1700);
+}
+
+/* ================= undo ================= */
+const undoStack = [];
+function pushUndo() {
+  const c = document.createElement('canvas');
+  c.width = drawCv.width; c.height = drawCv.height;
+  if (c.width === 0) return;
+  c.getContext('2d').drawImage(drawCv, 0, 0);
+  undoStack.push(c);
+  if (undoStack.length > 30) undoStack.shift();
+}
+function undo() {
+  if (!undoStack.length) { toast('🤷 Нечего отменять'); return; }
+  const c = undoStack.pop();
+  dctx.save();
+  dctx.setTransform(1, 0, 0, 1, 0, 0);
+  dctx.clearRect(0, 0, drawCv.width, drawCv.height);
+  dctx.drawImage(c, 0, 0, c.width, c.height, 0, 0, drawCv.width, drawCv.height);
+  dctx.restore();
+  toast('↩️ Штрих отменён');
+  tone(420, .09, .12);
+  scheduleSave();
+}
+
+/* ================= автосохранение рисунка ================= */
+let saveTimer = null;
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try { localStorage.setItem('airdraw-art', drawCv.toDataURL('image/png')); } catch (e) {}
+  }, 1500);
+}
+// конец штриха: магия фигур + сброс состояния руки + отложенное сохранение
+function endStroke(st) {
+  if (st.prevGesture === 'draw' || st.prevGesture === 'erase') {
+    if (shapeMagic && st.prevGesture === 'draw' && st.strokePts && st.strokePts.length >= 8) {
+      trySnapShape(st.strokePts, st.strokeColor || currentColor);
+    }
+    scheduleSave();
+  }
+  st.strokePts = null;
+  st.last = null; st.smooth = null; st.last2 = null; st.smooth2 = null;
+  st.f1x = null; st.f1y = null; st.f2x = null; st.f2y = null;
+}
+
+/* ================= магия фигур: распознавание ================= */
+// откат к снимку, сделанному в начале штриха (не трогая undo-стек)
+function restoreTopSnapshot() {
+  const c = undoStack[undoStack.length - 1];
+  if (!c) return false;
+  dctx.save();
+  dctx.setTransform(1, 0, 0, 1, 0, 0);
+  dctx.clearRect(0, 0, drawCv.width, drawCv.height);
+  dctx.drawImage(c, 0, 0, c.width, c.height, 0, 0, drawCv.width, drawCv.height);
+  dctx.restore();
+  return true;
+}
+function drawPerfectCircle(cx, cy, r, color) {
+  const one = x => {
+    dctx.save();
+    dctx.strokeStyle = color;
+    dctx.shadowColor = color;
+    dctx.shadowBlur = perfMode ? 0 : 18;
+    dctx.lineWidth = brushSize;
+    dctx.beginPath();
+    dctx.arc(x, cy, r, 0, Math.PI * 2);
+    dctx.stroke();
+    dctx.restore();
+  };
+  one(cx);
+  if (mirrorMode) one(W - cx);
+}
+function drawPerfectLine(a, b, color) {
+  strokeSeg(a, b, color, brushSize, false);
+  if (mirrorMode) strokeSeg({ x: W - a.x, y: a.y }, { x: W - b.x, y: b.y }, color, brushSize, false);
+}
+function trySnapShape(pts, color) {
+  const n = pts.length;
+  let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9, cx = 0, cy = 0;
+  for (const p of pts) {
+    minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+    minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+    cx += p.x; cy += p.y;
+  }
+  cx /= n; cy /= n;
+  const diag = Math.hypot(maxX - minX, maxY - minY);
+  if (diag < 40) return;
+
+  const a = pts[0], b = pts[n - 1];
+  const closed = dist(a, b) < diag * .28;
+
+  if (closed) {
+    // похоже на круг? средний радиус + среднее отклонение
+    let rSum = 0;
+    for (const p of pts) rSum += Math.hypot(p.x - cx, p.y - cy);
+    const r = rSum / n;
+    let dev = 0;
+    for (const p of pts) dev += Math.abs(Math.hypot(p.x - cx, p.y - cy) - r);
+    dev /= n;
+    if (r > 18 && dev < r * .22) {
+      if (restoreTopSnapshot()) {
+        drawPerfectCircle(cx, cy, r, color);
+        toast('📐 Идеальный круг!');
+        tone(950, .08, .12);
+      }
+    }
+  } else {
+    // похоже на прямую? максимальное отклонение от отрезка
+    const len = dist(a, b);
+    if (len < 50) return;
+    let maxD = 0;
+    for (const p of pts) {
+      const t = ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / (len * len);
+      const px = a.x + t * (b.x - a.x), py = a.y + t * (b.y - a.y);
+      maxD = Math.max(maxD, Math.hypot(p.x - px, p.y - py));
+    }
+    if (maxD < len * .07 + 6) {
+      if (restoreTopSnapshot()) {
+        drawPerfectLine(a, b, color);
+        toast('📐 Идеальная линия!');
+        tone(950, .08, .12);
+      }
+    }
+  }
+}
+
+/* ================= частицы ================= */
+let parts = [];
+function spawnParts(x, y, color, n, power) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const v = (Math.random() * .6 + .4) * power;
+    parts.push({
+      x, y,
+      vx: Math.cos(a) * v, vy: Math.sin(a) * v - power * .3,
+      life: 1, decay: Math.random() * .025 + .015,
+      size: Math.random() * 3 + 1.5,
+      color
+    });
+  }
+  if (parts.length > 250) parts.splice(0, parts.length - 250);
+}
+function stepParts(dt) {
+  const k = dt / 16.7;
+  for (const p of parts) {
+    p.x += p.vx * k; p.y += p.vy * k;
+    p.vy += .06 * k;
+    p.life -= p.decay * k;
+  }
+  parts = parts.filter(p => p.life > 0);
+  // режим 'lighter' даёт свечение без дорогого shadowBlur
+  hctx.globalCompositeOperation = 'lighter';
+  for (const p of parts) {
+    hctx.globalAlpha = p.life * .9;
+    hctx.fillStyle = p.color;
+    hctx.beginPath();
+    hctx.arc(p.x, p.y, p.size * p.life * 1.4, 0, Math.PI * 2);
+    hctx.fill();
+  }
+  hctx.globalAlpha = 1;
+  hctx.globalCompositeOperation = 'source-over';
+}
+
+/* ================= сглаживание One Euro =================
+   Стандарт для VR/AR: не дрожит на месте и не отстаёт на быстрых движениях */
+class LowPass {
+  constructor() { this.y = null; }
+  filter(x, a) { this.y = this.y === null ? x : a * x + (1 - a) * this.y; return this.y; }
+}
+class OneEuro {
+  constructor(minCutoff = 1.1, beta = .0045, dCutoff = 1) {
+    this.mc = minCutoff; this.beta = beta; this.dc = dCutoff;
+    this.xf = new LowPass(); this.df = new LowPass();
+    this.lastT = null; this.lastX = null;
+  }
+  alpha(cutoff, dt) { const tau = 1 / (2 * Math.PI * cutoff); return 1 / (1 + tau / dt); }
+  filter(x, tMs) {
+    const t = tMs / 1000;
+    if (this.lastT === null) {
+      this.lastT = t; this.lastX = x;
+      this.xf.filter(x, 1); this.df.filter(0, 1);
+      return x;
+    }
+    const dt = Math.max(t - this.lastT, 1e-3);
+    this.lastT = t;
+    const dx = (x - this.lastX) / dt;
+    this.lastX = x;
+    const edx = this.df.filter(dx, this.alpha(this.dc, dt));
+    const cutoff = this.mc + this.beta * Math.abs(edx);
+    return this.xf.filter(x, this.alpha(cutoff, dt));
+  }
+}
+
+/* ================= лазерные штрихи (тают сами) ================= */
+let lasers = [];
+function stepLasers(now) {
+  if (!lasers.length) return;
+  const LIFE = 1300;
+  lasers = lasers.filter(l => now - l.t < LIFE);
+  hctx.save();
+  hctx.globalCompositeOperation = 'lighter';
+  hctx.lineCap = 'round';
+  for (const l of lasers) {
+    const k = 1 - (now - l.t) / LIFE;
+    hctx.globalAlpha = k;
+    hctx.strokeStyle = l.color;
+    hctx.lineWidth = Math.max(1.5, brushSize * .9 * k);
+    hctx.beginPath();
+    hctx.moveTo(l.ax, l.ay);
+    hctx.lineTo(l.bx, l.by);
+    hctx.stroke();
+  }
+  hctx.restore();
+  if (lasers.length > 600) lasers.splice(0, lasers.length - 600);
+}
+
+/* ================= жесты ================= */
+const TIP = { index: 8, middle: 12, ring: 16, pinky: 20 };
+const PIP = { index: 6, middle: 10, ring: 14, pinky: 18 };
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+function fingerExtended(lm, name) {
+  const wrist = lm[0];
+  return dist(lm[TIP[name]], wrist) > dist(lm[PIP[name]], wrist) * 1.1;
+}
+function getGesture(lm) {
+  const i = fingerExtended(lm, 'index');
+  const m = fingerExtended(lm, 'middle');
+  const r = fingerExtended(lm, 'ring');
+  const p = fingerExtended(lm, 'pinky');
+  if (i && m && r && p) return 'palm';
+  if (i && !m && !r && !p) return 'draw';
+  if (i && m && !r && !p) return 'erase';
+  if (!i && !m && !r && !p) {
+    const scale = dist(lm[0], lm[9]);
+    if (dist(lm[4], lm[5]) > scale * 0.5 && lm[4].y < lm[2].y) return 'thumbsup';
+  }
+  return 'idle';
+}
+
+/* ================= состояние ================= */
+const handStates = {};   // label -> {last, smooth, palmHist, prevGesture}
+let lastClear = 0;
+let lastFrameT = performance.now();
+let introShown = true;
+
+function handState(label) {
+  return handStates[label] || (handStates[label] = { last: null, smooth: null, last2: null, smooth2: null, palmHist: [], prevGesture: 'idle' });
+}
+let lastGlow = null;
+function setStatus(txt, glowColor) {
+  if (statusEl.textContent !== txt) statusEl.textContent = txt;
+  const g = glowColor || '';
+  if (lastGlow !== g) {
+    lastGlow = g;
+    statusEl.style.boxShadow = g ? `0 0 22px ${g}` : '';
+  }
+}
+function clearAll(silent) {
+  pushUndo();
+  const burst = perfMode ? 15 : 70;
+  for (let i = 0; i < burst; i++) {
+    spawnParts(Math.random() * W, Math.random() * H, COLORS[i % COLORS.length], 1, 3);
+  }
+  dctx.clearRect(0, 0, W, H);
+  lasers = [];
+  scheduleSave();
+  Object.values(handStates).forEach(s => { s.last = null; s.last2 = null; });
+  flashEl.classList.remove('go');
+  void flashEl.offsetWidth;
+  flashEl.classList.add('go');
+  whoosh();
+  if (!silent) toast('💨 Всё стёрто');
+}
+
+/* ================= UI-элементы пальцем ================= */
+function stageRect() { return stage.getBoundingClientRect(); }
+function elCenter(el) {
+  const s = stageRect(), r = el.getBoundingClientRect();
+  return { x: r.left - s.left + r.width / 2, y: r.top - s.top + r.height / 2, w: r.width, h: r.height };
+}
+function rectHit(tip, r, s, pad) {
+  const x = r.left - s.left, y = r.top - s.top;
+  return tip.x > x - pad && tip.x < x + r.width + pad && tip.y > y - pad && tip.y < y + r.height + pad;
+}
+const toolbarEl = document.getElementById('toolbar');
+const brushesEl = document.getElementById('brushes');
+
+// возвращает true, если палец над меню — там рисование выключено
+function uiHover(tip, st) {
+  const s = stageRect();
+  let over = false;
+
+  // палитра
+  if (rectHit(tip, paletteEl.getBoundingClientRect(), s, 24)) {
+    over = true;
+    for (const sw of swatches) {
+      const c = elCenter(sw.el);
+      if (Math.hypot(tip.x - c.x, tip.y - c.y) < 30 && !sw.el.classList.contains('active')) {
+        selectColor(sw.color, sw.rainbow, sw.el);
+      }
+    }
+  }
+
+  // слайдер размера
+  if (rectHit(tip, sizerEl.getBoundingClientRect(), s, 24)) {
+    over = true;
+    const tr = trackEl.getBoundingClientRect();
+    const ty = tr.top - s.top;
+    if (tip.y > ty - 16 && tip.y < ty + tr.height + 16) {
+      sizeFromY(tr.top + Math.max(0, Math.min(tr.height, tip.y - ty)));
+    }
+  }
+
+  // кисти
+  if (rectHit(tip, brushesEl.getBoundingClientRect(), s, 24)) {
+    over = true;
+    for (const b of brushBtns) {
+      const c = elCenter(b.el || b);
+      if (Math.hypot(tip.x - c.x, tip.y - c.y) < Math.max(c.w, c.h) / 2 + 6) {
+        selectBrush(b.dataset.brush);
+      }
+    }
+  }
+
+  // тулбар и настройки: нажатие пальцем — навести и подержать полсекунды
+  const overToolbar = rectHit(tip, toolbarEl.getBoundingClientRect(), s, 18);
+  const overSettings = settingsPanel.classList.contains('open') &&
+                       rectHit(tip, settingsPanel.getBoundingClientRect(), s, 18);
+  if (overToolbar || overSettings) {
+    over = true;
+    const el = document.elementFromPoint(s.left + tip.x, s.top + tip.y);
+    const act = el && el.closest ? el.closest('.tbtn, .srow') : null;
+    if (act) {
+      if (st.hoverEl !== act) {
+        st.hoverEl = act;
+        st.hoverSince = performance.now();
+        st.hoverFired = false;
+      }
+      const prog = Math.min(1, (performance.now() - st.hoverSince) / 550);
+      hctx.save();
+      hctx.beginPath();
+      hctx.arc(tip.x, tip.y, 15, -Math.PI / 2, -Math.PI / 2 + prog * Math.PI * 2);
+      hctx.strokeStyle = st.hoverFired ? '#7cff00' : '#ffe600';
+      hctx.lineWidth = 3.5;
+      hctx.lineCap = 'round';
+      hctx.stroke();
+      hctx.restore();
+      if (prog >= 1 && !st.hoverFired) {
+        st.hoverFired = true;
+        act.click();
+        tone(750, .06, .14);
+      }
+    } else {
+      st.hoverEl = null;
+    }
+  } else {
+    st.hoverEl = null;
+  }
+
+  return over;
+}
+
+/* ================= обработка кадра ================= */
+function onResults(results) {
+  const now = performance.now();
+  const dt = Math.min(now - lastFrameT, 100);
+  lastFrameT = now;
+
+  hctx.clearRect(0, 0, W, H);
+  stepParts(dt);
+  stepLasers(now);
+
+  const handsLm = results.multiHandLandmarks || [];
+
+  if (introShown && handsLm.length > 0) {
+    introShown = false;
+    introEl.classList.add('hidden');
+  }
+
+  if (handsLm.length === 0) {
+    setStatus('🖐 Покажи руку в камеру');
+    // palmHist не сбрасываем: короткая потеря руки не должна убивать взмах
+    Object.values(handStates).forEach(s => { endStroke(s); s.prevGesture = 'idle'; });
+    return;
+  }
+
+  const seen = new Set();
+  const statuses = [];
+
+  for (let hi = 0; hi < handsLm.length; hi++) {
+    const lm = handsLm[hi];
+    const label = results.multiHandedness?.[hi]?.label || ('h' + hi);
+    seen.add(label);
+    const st = handState(label);
+
+    const pts = lm.map(p => ({ x: (1 - p.x) * W, y: p.y * H }));
+    const gesture = getGesture(lm);
+    const tip = pts[TIP.index];
+
+    if (!perfMode) drawSkeleton(pts);
+
+    /* --- палец над меню: рисование выключено --- */
+    if (uiHover(tip, st)) {
+      endStroke(st);
+      st.prevGesture = 'idle';
+      statuses.push({ txt: '🎛 Меню: цвет, кисть, размер', glow: '#ffe600', pri: 2 });
+      drawCursor(tip, 'ui');
+      continue;
+    }
+
+    /* --- взмах ладонью = очистка ---
+       траекторию пишем каждый кадр (при взмахе пальцы смазаны и не читаются),
+       "ладонь была открыта" — достаточно за последние полсекунды,
+       дистанция — максимальный размах в окне, а не первая-последняя точка */
+    if (gesture !== 'draw' && gesture !== 'erase') {
+      const extCount = ['index', 'middle', 'ring', 'pinky']
+        .reduce((n, f) => n + (fingerExtended(lm, f) ? 1 : 0), 0);
+      if (extCount >= 3) st.lastOpenT = now;
+      const palmX = (pts[0].x + pts[5].x + pts[9].x + pts[13].x + pts[17].x) / 5;
+      st.palmHist.push({ t: now, x: palmX });
+      st.palmHist = st.palmHist.filter(h => now - h.t < 400);
+      const hist = st.palmHist;
+      if (hist.length >= 3 && now - (st.lastOpenT || 0) < 500 && now - lastClear > 900) {
+        let lo = hist[0], hiP = hist[0];
+        for (const h of hist) {
+          if (h.x < lo.x) lo = h;
+          if (h.x > hiP.x) hiP = h;
+        }
+        const dx = hiP.x - lo.x;
+        const span = Math.max(Math.abs(hiP.t - lo.t), 1);
+        const speed = (dx / W) / (span / 1000);
+        if (dx > W * .17 || (dx > W * .09 && speed > 0.85)) {
+          lastClear = now;
+          st.palmHist = [];
+          clearAll(false);
+        }
+      }
+    }
+
+    /* --- рисование / ластик --- */
+    if (gesture === 'draw' || gesture === 'erase') {
+      const isLaser = gesture === 'draw' && brushType === 'laser';
+      if (st.prevGesture !== 'draw' && st.prevGesture !== 'erase' && !isLaser) pushUndo();
+
+      if (!st.f1x) { st.f1x = new OneEuro(); st.f1y = new OneEuro(); }
+      st.smooth = { x: st.f1x.filter(tip.x, now), y: st.f1y.filter(tip.y, now) };
+
+      if (gesture === 'draw') {
+        st.last2 = null; st.smooth2 = null; st.f2x = null; st.f2y = null;
+        if (rainbow) { hue = (hue + 4) % 360; currentColor = `hsl(${hue}, 100%, 60%)`; updateBrushPrev(); }
+        if (!isLaser) {
+          (st.strokePts || (st.strokePts = [])).push({ x: st.smooth.x, y: st.smooth.y });
+          if (st.strokePts.length > 2500) st.strokePts.shift();
+          st.strokeColor = currentColor;
+        }
+        if (st.last && dist(st.last, st.smooth) < W * 0.2) {
+          const speed = dist(st.last, st.smooth) / Math.max(now - st.last.t, 1);
+          const width = Math.max(2, brushSize * Math.max(.45, 1.25 - speed * 4));
+          if (isLaser) {
+            lasers.push({ ax: st.last.x, ay: st.last.y, bx: st.smooth.x, by: st.smooth.y, color: currentColor, t: now });
+            if (mirrorMode) lasers.push({ ax: W - st.last.x, ay: st.last.y, bx: W - st.smooth.x, by: st.smooth.y, color: currentColor, t: now });
+          } else {
+            drawSeg(st.last, st.smooth, currentColor, width);
+            if (mirrorMode) {
+              drawSeg({ x: W - st.last.x, y: st.last.y }, { x: W - st.smooth.x, y: st.smooth.y }, currentColor, width);
+            }
+          }
+          if (sparkleMode && Math.random() < .7) {
+            spawnParts(st.smooth.x, st.smooth.y, currentColor, 2, 1.3);
+            if (mirrorMode) spawnParts(W - st.smooth.x, st.smooth.y, currentColor, 1, 1.3);
+          }
+        }
+        statuses.push({ txt: '☝️ Рисуем!', glow: currentColor, pri: 3 });
+        drawCursor(tip, 'draw');
+      } else {
+        // стираем обоими пальцами: указательным и средним
+        const tip2 = pts[TIP.middle];
+        if (!st.f2x) { st.f2x = new OneEuro(); st.f2y = new OneEuro(); }
+        st.smooth2 = { x: st.f2x.filter(tip2.x, now), y: st.f2y.filter(tip2.y, now) };
+        const eraseW = brushSize * 2.8;
+        if (st.last && dist(st.last, st.smooth) < W * 0.2) {
+          strokeSeg(st.last, st.smooth, '#000', eraseW, true);
+          if (mirrorMode) {
+            strokeSeg({ x: W - st.last.x, y: st.last.y }, { x: W - st.smooth.x, y: st.smooth.y }, '#000', eraseW, true);
+          }
+        }
+        if (st.last2 && dist(st.last2, st.smooth2) < W * 0.2) {
+          strokeSeg(st.last2, st.smooth2, '#000', eraseW, true);
+          if (mirrorMode) {
+            strokeSeg({ x: W - st.last2.x, y: st.last2.y }, { x: W - st.smooth2.x, y: st.smooth2.y }, '#000', eraseW, true);
+          }
+        }
+        st.last2 = { x: st.smooth2.x, y: st.smooth2.y, t: now };
+        statuses.push({ txt: '✌️ Стираем', glow: '#ffffff', pri: 2 });
+        drawCursor(tip, 'erase');
+        drawCursor(tip2, 'erase');
+      }
+      st.last = { x: st.smooth.x, y: st.smooth.y, t: now };
+      st.prevGesture = gesture;
+      continue;
+    }
+
+    endStroke(st);
+
+    /* --- ладонь --- */
+    if (gesture === 'palm') {
+      statuses.push({ txt: '🖐 Смахни в сторону, чтобы стереть всё', glow: null, pri: 1 });
+      drawCursor(tip, 'idle');
+      st.prevGesture = gesture;
+      continue;
+    }
+
+    /* --- 👍 = undo: держать 0.7с, срабатывает один раз --- */
+    if (gesture === 'thumbsup') {
+      const HOLD = 700;
+      if (st.prevGesture !== 'thumbsup') { st.thumbStart = now; st.thumbFired = false; }
+      const prog = Math.min(1, (now - st.thumbStart) / HOLD);
+      const tp = pts[4];
+      // кольцо прогресса вокруг большого пальца
+      hctx.save();
+      hctx.beginPath();
+      hctx.arc(tp.x, tp.y, 22, -Math.PI / 2, -Math.PI / 2 + prog * Math.PI * 2);
+      hctx.strokeStyle = st.thumbFired ? '#7cff00' : '#ffe600';
+      hctx.lineWidth = 5;
+      hctx.lineCap = 'round';
+      hctx.stroke();
+      hctx.restore();
+      if (prog >= 1 && !st.thumbFired) {
+        st.thumbFired = true;
+        undo();
+      }
+      statuses.push({
+        txt: st.thumbFired ? '✅ Отменено — покажи 👍 заново для следующей' : '👍 Держи, чтобы отменить штрих…',
+        glow: '#ffe600', pri: 2
+      });
+      st.prevGesture = gesture;
+      continue;
+    }
+
+    statuses.push({ txt: '☝️ Подними указательный палец, чтобы рисовать', glow: null, pri: 0 });
+    drawCursor(tip, 'idle');
+    st.prevGesture = gesture;
+  }
+
+  // сброс состояния пропавших рук
+  Object.keys(handStates).forEach(k => {
+    if (!seen.has(k)) {
+      const s = handStates[k];
+      endStroke(s);
+      s.prevGesture = 'idle';
+    }
+  });
+
+  statuses.sort((a, b) => b.pri - a.pri);
+  if (statuses.length) setStatus(statuses[0].txt, statuses[0].glow);
+}
+
+/* ================= отрисовка ================= */
+function strokeSeg(a, b, color, width, isEraser) {
+  dctx.save();
+  if (isEraser) {
+    dctx.globalCompositeOperation = 'destination-out';
+    dctx.shadowBlur = 0;
+  } else {
+    dctx.strokeStyle = color;
+    dctx.shadowColor = color;
+    dctx.shadowBlur = perfMode ? 0 : 18;
+  }
+  if (isEraser) dctx.strokeStyle = 'rgba(0,0,0,1)';
+  dctx.lineCap = 'round';
+  dctx.lineJoin = 'round';
+  dctx.lineWidth = width;
+  dctx.beginPath();
+  dctx.moveTo(a.x, a.y);
+  dctx.lineTo(b.x, b.y);
+  dctx.stroke();
+  dctx.restore();
+}
+
+const BONES = [
+  [0,1],[1,2],[2,3],[3,4],
+  [0,5],[5,6],[6,7],[7,8],
+  [5,9],[9,10],[10,11],[11,12],
+  [9,13],[13,14],[14,15],[15,16],
+  [13,17],[17,18],[18,19],[19,20],[0,17]
+];
+function drawSkeleton(pts) {
+  hctx.strokeStyle = 'rgba(255,255,255,.18)';
+  hctx.lineWidth = 2;
+  hctx.beginPath();
+  for (const [a, b] of BONES) {
+    hctx.moveTo(pts[a].x, pts[a].y);
+    hctx.lineTo(pts[b].x, pts[b].y);
+  }
+  hctx.stroke();
+  hctx.fillStyle = 'rgba(255,255,255,.3)';
+  for (const p of pts) {
+    hctx.beginPath();
+    hctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+    hctx.fill();
+  }
+}
+function drawCursor(tip, mode) {
+  hctx.save();
+  if (mode === 'draw') {
+    hctx.beginPath();
+    hctx.arc(tip.x, tip.y, Math.max(4, brushSize * .8), 0, Math.PI * 2);
+    hctx.fillStyle = currentColor;
+    hctx.shadowColor = currentColor;
+    hctx.shadowBlur = perfMode ? 0 : 22;
+    hctx.fill();
+  } else if (mode === 'erase') {
+    hctx.beginPath();
+    hctx.arc(tip.x, tip.y, brushSize * 1.6, 0, Math.PI * 2);
+    hctx.strokeStyle = 'rgba(255,255,255,.9)';
+    hctx.setLineDash([6, 6]);
+    hctx.lineWidth = 2.5;
+    hctx.stroke();
+  } else if (mode === 'ui') {
+    hctx.beginPath();
+    hctx.arc(tip.x, tip.y, 10, 0, Math.PI * 2);
+    hctx.strokeStyle = '#ffe600';
+    hctx.lineWidth = 3;
+    hctx.stroke();
+    hctx.beginPath();
+    hctx.arc(tip.x, tip.y, 2.5, 0, Math.PI * 2);
+    hctx.fillStyle = '#ffe600';
+    hctx.fill();
+  } else {
+    hctx.beginPath();
+    hctx.arc(tip.x, tip.y, 13, 0, Math.PI * 2);
+    hctx.strokeStyle = 'rgba(255,255,255,.7)';
+    hctx.lineWidth = 2;
+    hctx.stroke();
+  }
+  hctx.restore();
+}
+
+/* ================= сохранение ================= */
+document.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (k === 's' || k === 'ы') savePng();
+  if (k === 'c' || k === 'с') clearAll(false);
+  if (k === 'z' || k === 'я') undo();
+  if (k === 'm' || k === 'ь') btnMirror.click();
+  if (k === 'e' || k === 'у') btnSparkle.click();
+  if (k === 'v' || k === 'м') btnCam.click();
+  if (k === 'r' || k === 'к') toggleRec();
+  if (k === 't' || k === 'е') btnPerf.click();
+  if (k === 'f' || k === 'а') btnShape.click();
+  if (k === 'p' || k === 'з') btnShot.click();
+  if (k === 'o' || k === 'щ') btnSettings.click();
+  if (k === '1') selectBrush('neon');
+  if (k === '2') selectBrush('marker');
+  if (k === '3') selectBrush('spray');
+  if (k === '4') selectBrush('laser');
+});
+function savePng() {
+  const out = document.createElement('canvas');
+  out.width = W; out.height = H;
+  const ctx = out.getContext('2d');
+  drawBgTo(ctx);
+  ctx.drawImage(drawCv, 0, 0, drawCv.width, drawCv.height, 0, 0, W, H);
+  const a = document.createElement('a');
+  a.download = 'air-draw.png';
+  a.href = out.toDataURL('image/png');
+  a.click();
+  toast('💾 Сохранено в загрузки');
+  tone(880, .1, .12);
+}
+
+/* ================= запуск нейронки =================
+   MediaPipe Tasks HandLandmarker — новое поколение трекинга:
+   работает на GPU, точнее и быстрее старого Hands */
+const fpsEl = document.getElementById('fps');
+const CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+
+(async () => {
+  try {
+    setStatus('⏳ Включаю камеру…');
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
+    });
+    video.srcObject = stream;
+    await new Promise(r => { video.onloadedmetadata = r; });
+    await video.play();
+    resize();
+
+    setStatus('⏳ Загружаю нейронку…');
+    const { FilesetResolver, HandLandmarker } = await import(CDN + '/vision_bundle.mjs');
+    const fileset = await FilesetResolver.forVisionTasks(CDN + '/wasm');
+    const makeOpts = delegate => ({
+      baseOptions: {
+        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+        delegate
+      },
+      runningMode: 'VIDEO',
+      numHands: 2,
+      minHandDetectionConfidence: 0.6,
+      minHandPresenceConfidence: 0.6,
+      minTrackingConfidence: 0.6
+    });
+    let landmarker, gpuOk = true;
+    try {
+      landmarker = await HandLandmarker.createFromOptions(fileset, makeOpts('GPU'));
+    } catch (e) {
+      gpuOk = false;
+      landmarker = await HandLandmarker.createFromOptions(fileset, makeOpts('CPU'));
+    }
+    activeLandmarker = landmarker;
+    if (localStorage.getItem('airdraw-perf') === '1') applyPerf(true, true);
+    video.addEventListener('resize', resize);   // смена разрешения камеры в турбо-режиме
+
+    // восстановление прошлого рисунка
+    try {
+      const savedArt = localStorage.getItem('airdraw-art');
+      if (savedArt) {
+        const img = new Image();
+        img.onload = () => { dctx.drawImage(img, 0, 0, W, H); toast('🖼 Вернул прошлый рисунок (C — очистить)'); };
+        img.src = savedArt;
+      }
+    } catch (e) {}
+
+    setStatus('🖐 Покажи руку в камеру');
+    let lastVideoTime = -1;
+    let fpsCount = 0, fpsLast = performance.now();
+    const useRVFC = 'requestVideoFrameCallback' in HTMLVideoElement.prototype;
+
+    function loop() {
+      if (video.currentTime !== lastVideoTime) {
+        lastVideoTime = video.currentTime;
+        const res = landmarker.detectForVideo(video, performance.now());
+        onResults({
+          multiHandLandmarks: res.landmarks || [],
+          multiHandedness: (res.handedness || []).map(h => ({ label: h[0] ? h[0].categoryName : '?' }))
+        });
+        fpsCount++;
+        const t = performance.now();
+        if (t - fpsLast >= 1000) {
+          fpsEl.textContent = `⚡ ${fpsCount} FPS · ${gpuOk ? 'GPU' : 'CPU'}`;
+          fpsCount = 0; fpsLast = t;
+        }
+      }
+      if (useRVFC) video.requestVideoFrameCallback(loop);
+      else requestAnimationFrame(loop);
+    }
+    loop();
+  } catch (e) {
+    console.error(e);
+    setStatus('❌ ' + (e.name === 'NotAllowedError'
+      ? 'Нет доступа к камере — разреши её и обнови страницу'
+      : 'Не удалось загрузить нейронку — проверь интернет и обнови страницу'));
+  }
+})();
+</script>
+</body>
+</html>
