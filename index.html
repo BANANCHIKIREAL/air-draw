@@ -599,7 +599,7 @@
     <button class="tbtn" id="btnMirror"  data-tip="Зеркальный режим (M)">🪞</button>
     <button class="tbtn" id="btnSparkle" data-tip="Искры (E)">✨</button>
     <button class="tbtn" id="btnMusic"   data-tip="Музыкальная кисть (N)">🎵</button>
-    <button class="tbtn" id="btnShape"   data-tip="Магия фигур: ровные круги и линии (F)">📐</button>
+    <button class="tbtn" id="btnShape"   data-tip="Магия фигур: круг, линия, треугольник, квадрат… (F)">📐</button>
     <button class="tbtn" id="btnCouch"   data-tip="Режим дивана: рисуй издалека (L)">🛋</button>
     <button class="tbtn" id="btnCam"     data-tip="Сменить фон (V)">🖼️</button>
     <button class="tbtn" id="btnRec"     data-tip="Запись видео (R)">⏺</button>
@@ -943,7 +943,7 @@ const btnShape = document.getElementById('btnShape');
 btnShape.onclick = () => {
   shapeMagic = !shapeMagic;
   btnShape.classList.toggle('on', shapeMagic);
-  toast(shapeMagic ? '📐 Магия фигур: кривые круги и линии станут идеальными' : '📐 Магия фигур выключена');
+  toast(shapeMagic ? '📐 Магия фигур: круги, линии, треугольники, квадраты станут идеальными' : '📐 Магия фигур выключена');
 };
 
 /* ---------- режим дивана: рисование издалека ---------- */
@@ -1388,7 +1388,82 @@ function drawPerfectLine(a, b, color) {
   strokeSeg(a, b, color, brushSize, false);
   if (mirrorMode) strokeSeg({ x: W - a.x, y: a.y }, { x: W - b.x, y: b.y }, color, brushSize, false);
 }
-function trySnapShape(pts, color) {
+// равномерная передискретизация штриха: убирает перекос от скорости руки
+function resamplePts(pts, n) {
+  let total = 0;
+  for (let i = 1; i < pts.length; i++) total += dist(pts[i - 1], pts[i]);
+  if (total < 1) return pts.slice();
+  const step = total / (n - 1);
+  const out = [pts[0]];
+  let acc = 0, i = 1, prev = pts[0];
+  while (out.length < n - 1 && i < pts.length) {
+    const d = dist(prev, pts[i]);
+    if (acc + d >= step && d > 0) {
+      const t = (step - acc) / d;
+      const np = { x: prev.x + (pts[i].x - prev.x) * t, y: prev.y + (pts[i].y - prev.y) * t };
+      out.push(np);
+      prev = np;
+      acc = 0;
+    } else {
+      acc += d;
+      prev = pts[i];
+      i++;
+    }
+  }
+  out.push(pts[pts.length - 1]);
+  return out;
+}
+// упрощение кривой (Ramer-Douglas-Peucker) — оставляет только углы
+function rdp(pts, eps) {
+  if (pts.length < 3) return pts.slice();
+  const a = pts[0], b = pts[pts.length - 1];
+  const len = Math.hypot(b.x - a.x, b.y - a.y) || 1e-6;
+  let maxD = 0, idx = 0;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const p = pts[i];
+    const d = Math.abs((b.x - a.x) * (a.y - p.y) - (a.x - p.x) * (b.y - a.y)) / len;
+    if (d > maxD) { maxD = d; idx = i; }
+  }
+  if (maxD > eps) {
+    const l = rdp(pts.slice(0, idx + 1), eps);
+    const r = rdp(pts.slice(idx), eps);
+    return l.slice(0, -1).concat(r);
+  }
+  return [a, b];
+}
+function isAxisAligned(cs) {
+  for (let i = 0; i < cs.length; i++) {
+    const a = cs[i], b = cs[(i + 1) % cs.length];
+    let ang = Math.abs(Math.atan2(b.y - a.y, b.x - a.x)) * 180 / Math.PI % 90;
+    if (Math.min(ang, 90 - ang) > 15) return false;
+  }
+  return true;
+}
+function drawPerfectPolygon(cs, color) {
+  const one = mir => {
+    dctx.save();
+    dctx.strokeStyle = color;
+    dctx.shadowColor = color;
+    dctx.shadowBlur = perfMode ? 0 : 18;
+    dctx.lineWidth = brushSize;
+    dctx.lineJoin = 'round';
+    dctx.lineCap = 'round';
+    dctx.beginPath();
+    cs.forEach((p, i) => {
+      const x = mir ? W - p.x : p.x;
+      if (i === 0) dctx.moveTo(x, p.y); else dctx.lineTo(x, p.y);
+    });
+    dctx.closePath();
+    dctx.stroke();
+    dctx.restore();
+  };
+  one(false);
+  if (mirrorMode) one(true);
+}
+const POLY_NAMES = { 3: 'треугольник', 4: 'четырёхугольник', 5: 'пятиугольник', 6: 'шестиугольник' };
+function trySnapShape(rawPts, color) {
+  if (rawPts.length < 8) return;
+  const pts = resamplePts(rawPts, 64);
   const n = pts.length;
   let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9, cx = 0, cy = 0;
   for (const p of pts) {
@@ -1400,26 +1475,11 @@ function trySnapShape(pts, color) {
   const diag = Math.hypot(maxX - minX, maxY - minY);
   if (diag < 40) return;
 
-  const a = pts[0], b = pts[n - 1];
-  const closed = dist(a, b) < diag * .28;
+  const closed = dist(pts[0], pts[n - 1]) < diag * .3;
 
-  if (closed) {
-    // похоже на круг? средний радиус + среднее отклонение
-    let rSum = 0;
-    for (const p of pts) rSum += Math.hypot(p.x - cx, p.y - cy);
-    const r = rSum / n;
-    let dev = 0;
-    for (const p of pts) dev += Math.abs(Math.hypot(p.x - cx, p.y - cy) - r);
-    dev /= n;
-    if (r > 18 && dev < r * .22) {
-      if (restoreTopSnapshot()) {
-        drawPerfectCircle(cx, cy, r, color);
-        toast('📐 Идеальный круг!');
-        tone(950, .08, .12);
-      }
-    }
-  } else {
-    // похоже на прямую? максимальное отклонение от отрезка
+  /* --- прямая --- */
+  if (!closed) {
+    const a = pts[0], b = pts[n - 1];
     const len = dist(a, b);
     if (len < 50) return;
     let maxD = 0;
@@ -1428,13 +1488,66 @@ function trySnapShape(pts, color) {
       const px = a.x + t * (b.x - a.x), py = a.y + t * (b.y - a.y);
       maxD = Math.max(maxD, Math.hypot(p.x - px, p.y - py));
     }
-    if (maxD < len * .07 + 6) {
-      if (restoreTopSnapshot()) {
-        drawPerfectLine(a, b, color);
-        toast('📐 Идеальная линия!');
-        tone(950, .08, .12);
-      }
+    if (maxD < len * .08 + 6 && restoreTopSnapshot()) {
+      drawPerfectLine(a, b, color);
+      toast('📐 Идеальная линия!');
+      tone(950, .08, .12);
     }
+    return;
+  }
+
+  /* --- насколько это круг --- */
+  let rSum = 0;
+  for (const p of pts) rSum += Math.hypot(p.x - cx, p.y - cy);
+  const r = rSum / n;
+  let dev = 0;
+  for (const p of pts) dev += Math.abs(Math.hypot(p.x - cx, p.y - cy) - r);
+  dev /= n;
+  const circleScore = dev / r;
+
+  if (circleScore < .12 && r > 18) {
+    if (restoreTopSnapshot()) {
+      drawPerfectCircle(cx, cy, r, color);
+      toast('📐 Идеальный круг!');
+      tone(950, .08, .12);
+    }
+    return;
+  }
+
+  /* --- многоугольник: углы через RDP, начиная с самой дальней точки --- */
+  let startI = 0, bestD = 0;
+  for (let i = 0; i < n; i++) {
+    const d = Math.hypot(pts[i].x - cx, pts[i].y - cy);
+    if (d > bestD) { bestD = d; startI = i; }
+  }
+  const rot = pts.slice(startI).concat(pts.slice(0, startI));
+  rot.push(rot[0]);
+  const corners = rdp(rot, Math.max(6, diag * .045));
+  corners.pop();
+  const m = corners.length;
+
+  if (m >= 3 && m <= 6) {
+    if (!restoreTopSnapshot()) return;
+    if (m === 4 && isAxisAligned(corners)) {
+      // почти ровный прямоугольник → идеально ровный
+      drawPerfectPolygon([
+        { x: minX, y: minY }, { x: maxX, y: minY },
+        { x: maxX, y: maxY }, { x: minX, y: maxY }
+      ], color);
+      toast('📐 Идеальный прямоугольник!');
+    } else {
+      drawPerfectPolygon(corners, color);
+      toast('📐 Идеальный ' + (POLY_NAMES[m] || 'многоугольник') + '!');
+    }
+    tone(950, .08, .12);
+    return;
+  }
+
+  /* --- углов не нашли, но форма кругловата --- */
+  if (circleScore < .22 && r > 18 && restoreTopSnapshot()) {
+    drawPerfectCircle(cx, cy, r, color);
+    toast('📐 Идеальный круг!');
+    tone(950, .08, .12);
   }
 }
 
