@@ -131,9 +131,13 @@
     transform: scale(1.22);
     box-shadow: 0 0 20px var(--c, #fff);
   }
-  /* радужный кружок без полупрозрачной окантовки — на градиенте она видна как полоски */
-  .swatch.rainbowSw { border-color: transparent; }
-  .swatch.rainbowSw.active { border-color: #fff; }
+  /* радужный кружок вообще без рамки: фон под рамкой в Chrome вылезает
+     за круг по углам; выбранность рисуем тенью — она повторяет круг точно */
+  .swatch.rainbowSw { border: none; }
+  .swatch.rainbowSw.active {
+    border: none;
+    box-shadow: 0 0 0 3px #fff, 0 0 20px #fff;
+  }
 
   /* ---------- кисти ---------- */
   #brushes {
