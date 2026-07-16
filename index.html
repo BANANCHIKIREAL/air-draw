@@ -298,7 +298,7 @@
   }
 
   /* ---------- телефоны и узкие экраны ---------- */
-  @media (max-width: 700px) {
+  @media (max-width: 700px), (pointer: coarse) {
     #toolbar { flex-wrap: wrap; max-width: 62vw; justify-content: flex-end; padding: 5px; gap: 5px; }
     .tbtn { width: 34px; height: 34px; font-size: 15px; border-radius: 9px; }
     .tbtn::after { display: none; }
@@ -319,6 +319,47 @@
     .gestRow .ico { font-size: 20px; width: 28px; }
     #countdown { font-size: 96px; }
   }
+
+  /* ---------- мобильный выдвижной интерфейс ---------- */
+  .edgeTab { display: none; }
+  body.mobile .edgeTab {
+    display: grid; place-items: center;
+    position: absolute;
+    z-index: 8;
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: rgba(13,13,26,.75);
+    border: 1px solid rgba(255,255,255,.3);
+    color: #fff;
+    font-size: 17px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+  }
+  body.mobile .tab-left   { left: 5px; top: 50%; transform: translateY(-50%); }
+  body.mobile .tab-right  { right: 5px; top: 50%; transform: translateY(-50%); }
+  body.mobile .tab-top    { top: 5px; left: 50%; transform: translateX(-50%); }
+  body.mobile .tab-bottom { bottom: 5px; left: 5px; }
+
+  body.mobile #palette, body.mobile #sizer, body.mobile #toolbar, body.mobile #brushes {
+    transition: transform .25s ease, opacity .25s ease;
+  }
+  body.mobile #palette { left: 48px; }
+  body.mobile #sizer   { right: 48px; }
+  body.mobile #toolbar { top: 48px; right: 8px; flex-wrap: wrap; max-width: 64vw; justify-content: flex-end; }
+  body.mobile #brushes { left: 48px; bottom: 8px; }
+  body.mobile #palette.collapsed { transform: translate(-160%, -50%); opacity: 0; pointer-events: none; }
+  body.mobile #sizer.collapsed   { transform: translate(160%, -50%);  opacity: 0; pointer-events: none; }
+  body.mobile #toolbar.collapsed { transform: translateY(-180%); opacity: 0; pointer-events: none; }
+  body.mobile #brushes.collapsed { transform: translateY(180%); opacity: 0; pointer-events: none; }
+
+  body.mobile #btnSettings {
+    position: absolute;
+    top: 5px; right: 5px;
+    z-index: 8;
+  }
+  body.mobile #settingsPanel { top: 48px; right: 8px; width: min(300px, 78vw); }
+  body.mobile #logo { top: 8px; left: 10px; }
 
   /* ---------- панель настроек ---------- */
   #settingsPanel {
@@ -1351,36 +1392,34 @@ function uiHover(tip, st) {
     }
   }
 
-  // тулбар и настройки: нажатие пальцем — навести и подержать полсекунды
-  const overToolbar = rectHit(tip, toolbarEl.getBoundingClientRect(), s, 18);
-  const overSettings = settingsPanel.classList.contains('open') &&
-                       rectHit(tip, settingsPanel.getBoundingClientRect(), s, 18);
-  if (overToolbar || overSettings) {
+  // тулбар и настройки — зоны без рисования
+  if (rectHit(tip, toolbarEl.getBoundingClientRect(), s, 18)) over = true;
+  if (settingsPanel.classList.contains('open') &&
+      rectHit(tip, settingsPanel.getBoundingClientRect(), s, 18)) over = true;
+
+  // нажатие пальцем: навести на кнопку/стрелку и подержать полсекунды
+  const el = document.elementFromPoint(s.left + tip.x, s.top + tip.y);
+  const act = el && el.closest ? el.closest('.tbtn, .srow, .edgeTab') : null;
+  if (act) {
     over = true;
-    const el = document.elementFromPoint(s.left + tip.x, s.top + tip.y);
-    const act = el && el.closest ? el.closest('.tbtn, .srow') : null;
-    if (act) {
-      if (st.hoverEl !== act) {
-        st.hoverEl = act;
-        st.hoverSince = performance.now();
-        st.hoverFired = false;
-      }
-      const prog = Math.min(1, (performance.now() - st.hoverSince) / 550);
-      hctx.save();
-      hctx.beginPath();
-      hctx.arc(tip.x, tip.y, 15, -Math.PI / 2, -Math.PI / 2 + prog * Math.PI * 2);
-      hctx.strokeStyle = st.hoverFired ? '#7cff00' : '#ffe600';
-      hctx.lineWidth = 3.5;
-      hctx.lineCap = 'round';
-      hctx.stroke();
-      hctx.restore();
-      if (prog >= 1 && !st.hoverFired) {
-        st.hoverFired = true;
-        act.click();
-        tone(750, .06, .14);
-      }
-    } else {
-      st.hoverEl = null;
+    if (st.hoverEl !== act) {
+      st.hoverEl = act;
+      st.hoverSince = performance.now();
+      st.hoverFired = false;
+    }
+    const prog = Math.min(1, (performance.now() - st.hoverSince) / 550);
+    hctx.save();
+    hctx.beginPath();
+    hctx.arc(tip.x, tip.y, 15, -Math.PI / 2, -Math.PI / 2 + prog * Math.PI * 2);
+    hctx.strokeStyle = st.hoverFired ? '#7cff00' : '#ffe600';
+    hctx.lineWidth = 3.5;
+    hctx.lineCap = 'round';
+    hctx.stroke();
+    hctx.restore();
+    if (prog >= 1 && !st.hoverFired) {
+      st.hoverFired = true;
+      act.click();
+      tone(750, .06, .14);
     }
   } else {
     st.hoverEl = null;
@@ -1759,6 +1798,30 @@ function pointerEnd(e) {
 }
 hudCv.addEventListener('pointerup', pointerEnd);
 hudCv.addEventListener('pointercancel', pointerEnd);
+
+/* ================= мобильный выдвижной интерфейс ================= */
+if (window.matchMedia('(pointer: coarse)').matches) {
+  document.body.classList.add('mobile');
+  stage.appendChild(btnSettings);   // ⚙️ всегда на экране, отдельно от тулбара
+  const TABS = [
+    { panel: paletteEl, cls: 'tab-left',   open: '◂', closed: '▸' },
+    { panel: sizerEl,   cls: 'tab-right',  open: '▸', closed: '◂' },
+    { panel: toolbarEl, cls: 'tab-top',    open: '▴', closed: '▾' },
+    { panel: brushesEl, cls: 'tab-bottom', open: '▾', closed: '▴' }
+  ];
+  for (const t of TABS) {
+    t.panel.classList.add('collapsed');
+    const tab = document.createElement('button');
+    tab.className = 'edgeTab ' + t.cls;
+    tab.textContent = t.closed;
+    tab.onclick = () => {
+      const nowCollapsed = !t.panel.classList.contains('collapsed');
+      t.panel.classList.toggle('collapsed', nowCollapsed);
+      tab.textContent = nowCollapsed ? t.closed : t.open;
+    };
+    stage.appendChild(tab);
+  }
+}
 
 /* ================= запуск нейронки =================
    MediaPipe Tasks HandLandmarker — новое поколение трекинга:
