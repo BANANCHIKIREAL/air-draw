@@ -48,7 +48,7 @@
     transform: scaleX(-1);
     filter: brightness(.5) saturate(.85);
   }
-  canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
 
   /* ---------- стеклянные панели ---------- */
   .glass {
@@ -297,6 +297,29 @@
     letter-spacing: 1px;
   }
 
+  /* ---------- телефоны и узкие экраны ---------- */
+  @media (max-width: 700px) {
+    #toolbar { flex-wrap: wrap; max-width: 62vw; justify-content: flex-end; padding: 5px; gap: 5px; }
+    .tbtn { width: 34px; height: 34px; font-size: 15px; border-radius: 9px; }
+    .tbtn::after { display: none; }
+    .swatch { width: 28px; height: 28px; font-size: 13px; }
+    #palette { gap: 6px; padding: 8px 6px; left: 8px; }
+    #sizer { padding: 10px 7px; right: 8px; }
+    #sizerTrack { height: 100px; }
+    #status { font-size: 12px; padding: 7px 13px; bottom: 8px; max-width: 92vw; white-space: normal; text-align: center; }
+    #brushes { gap: 4px; padding: 5px; bottom: 8px; left: 8px; }
+    .bbtn { height: 32px; padding: 0 8px; font-size: 11px; }
+    #logo { font-size: 13px; letter-spacing: 2px; }
+    #fps { top: 34px; font-size: 10px; }
+    #credits { font-size: 9px; right: 8px; bottom: 44px; }
+    #settingsPanel { width: min(290px, 82vw); top: 84px; }
+    #introCard { padding: 20px 16px; max-width: 92vw; }
+    #introCard h1 { font-size: 24px; }
+    .gestRow { font-size: 12px; padding: 6px 0; gap: 10px; }
+    .gestRow .ico { font-size: 20px; width: 28px; }
+    #countdown { font-size: 96px; }
+  }
+
   /* ---------- панель настроек ---------- */
   #settingsPanel {
     position: absolute;
@@ -418,6 +441,7 @@
     <button class="tbtn" id="btnUndo"    data-tip="Отменить штрих (Z / 👍)">↩️</button>
     <button class="tbtn" id="btnMirror"  data-tip="Зеркальный режим (M)">🪞</button>
     <button class="tbtn" id="btnSparkle" data-tip="Искры (E)">✨</button>
+    <button class="tbtn" id="btnMusic"   data-tip="Музыкальная кисть (N)">🎵</button>
     <button class="tbtn" id="btnShape"   data-tip="Магия фигур: ровные круги и линии (F)">📐</button>
     <button class="tbtn" id="btnCouch"   data-tip="Режим дивана: рисуй издалека (L)">🛋</button>
     <button class="tbtn" id="btnCam"     data-tip="Сменить фон (V)">🖼️</button>
@@ -462,6 +486,7 @@
       <div class="gestRow"><span class="ico">🖐</span><span>Взмах ладонью — <b>стереть всё</b></span></div>
       <div class="gestRow"><span class="ico">👍</span><span>Большой палец — <b>держи</b>, кольцо заполнится и штрих отменится</span></div>
       <div class="gestRow"><span class="ico">🎨</span><span>Палитра, кисти и слайдер — тыкай пальцем, над меню рисование выключается</span></div>
+      <div class="gestRow"><span class="ico">📱</span><span>Можно рисовать и <b>пальцем по экрану</b> (или мышкой)</span></div>
       <div class="go">Покажи руку в камеру, чтобы начать ▸</div>
       <div class="ver">v1.1.0 · автор: BANANCHIKIREAL</div>
     </div>
@@ -676,6 +701,21 @@ btnCouch.onclick = () => {
     : '🛋 Режим дивана выключен');
 };
 
+/* ---------- музыкальная кисть ---------- */
+let musicMode = false;
+const btnMusic = document.getElementById('btnMusic');
+btnMusic.onclick = () => {
+  musicMode = !musicMode;
+  btnMusic.classList.toggle('on', musicMode);
+  if (musicMode) {
+    try { ensureAc(); if (ac && ac.state === 'suspended') ac.resume(); } catch (e) {}
+  } else {
+    Object.values(handStates).forEach(musicRelease);
+    Object.values(pStates).forEach(musicRelease);
+  }
+  toast(musicMode ? '🎵 Музыкальная кисть: выше рука — выше нота, быстрее — громче' : '🎵 Музыка выключена');
+};
+
 /* ---------- фото с таймером ---------- */
 const btnShot = document.getElementById('btnShot');
 let shotBusy = false;
@@ -808,6 +848,7 @@ const TB_BUTTONS = [
   { id: 'btnSparkle', label: '✨ Искры',            toggle: true },
   { id: 'btnShape',   label: '📐 Магия фигур',      toggle: true },
   { id: 'btnCouch',   label: '🛋 Режим дивана (издалека)', toggle: true },
+  { id: 'btnMusic',   label: '🎵 Музыкальная кисть',       toggle: true },
   { id: 'btnCam',     label: '🖼️ Сменить фон',      toggle: false },
   { id: 'btnRec',     label: '⏺ Запись видео',      toggle: true },
   { id: 'btnShot',    label: '📸 Фото с таймером',  toggle: false },
@@ -948,6 +989,33 @@ function whoosh() {
   } catch (e) {}
 }
 
+/* ================= музыкальная кисть (терменвокс) ================= */
+function musicTick(st, y, speed) {
+  try {
+    if (!ensureAc()) return;
+    if (!st.voice) {
+      const osc = ac.createOscillator();
+      const g = ac.createGain();
+      const f = ac.createBiquadFilter();
+      osc.type = 'sawtooth';
+      f.type = 'lowpass'; f.frequency.value = 2200; f.Q.value = 2;
+      g.gain.value = 0;
+      osc.connect(f); f.connect(g); g.connect(ac.destination);
+      osc.start();
+      st.voice = { osc, g };
+    }
+    const fr = 1050 * Math.pow(2, -3 * (y / H));   // сверху ~1050 Гц, снизу ~130 Гц
+    st.voice.osc.frequency.setTargetAtTime(fr, ac.currentTime, .03);
+    const vol = Math.min(.22, .08 + speed * .25);  // быстрее ведёшь — громче
+    st.voice.g.gain.setTargetAtTime(vol, ac.currentTime, .05);
+  } catch (e) {}
+}
+function musicRelease(st) {
+  if (st.voice) {
+    try { st.voice.g.gain.setTargetAtTime(0, ac.currentTime, .08); } catch (e) {}
+  }
+}
+
 /* ================= тосты ================= */
 let toastTimer = null;
 function toast(msg) {
@@ -996,6 +1064,7 @@ function endStroke(st) {
     }
     scheduleSave();
   }
+  musicRelease(st);
   st.strokePts = null;
   st.last = null; st.smooth = null; st.last2 = null; st.smooth2 = null;
   st.f1x = null; st.f1y = null; st.f2x = null; st.f2y = null;
@@ -1435,6 +1504,7 @@ function onResults(results) {
             spawnParts(st.smooth.x, st.smooth.y, currentColor, 2, 1.3);
             if (mirrorMode) spawnParts(W - st.smooth.x, st.smooth.y, currentColor, 1, 1.3);
           }
+          if (musicMode) musicTick(st, st.smooth.y, speed);
         }
         statuses.push({ txt: '☝️ Рисуем!', glow: currentColor, pri: 3 });
         drawCursor(tip, 'draw');
@@ -1617,6 +1687,7 @@ document.addEventListener('keydown', e => {
   if (k === 'p' || k === 'з') btnShot.click();
   if (k === 'o' || k === 'щ') btnSettings.click();
   if (k === 'l' || k === 'д') btnCouch.click();
+  if (k === 'n' || k === 'т') btnMusic.click();
   if (k === '1') selectBrush('neon');
   if (k === '2') selectBrush('marker');
   if (k === '3') selectBrush('spray');
@@ -1635,6 +1706,59 @@ function savePng() {
   toast('💾 Сохранено в загрузки');
   tone(880, .1, .12);
 }
+
+/* ================= рисование пальцем по экрану / мышкой ================= */
+const pStates = {};   // pointerId -> состояние штриха
+function stagePos(e) {
+  const r = stage.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+hudCv.addEventListener('pointerdown', e => {
+  hudCv.setPointerCapture(e.pointerId);
+  if (musicMode) { try { ensureAc(); if (ac.state === 'suspended') ac.resume(); } catch (err) {} }
+  const p = stagePos(e);
+  if (brushType !== 'laser') pushUndo();
+  pStates[e.pointerId] = {
+    last: { x: p.x, y: p.y, t: performance.now() },
+    strokePts: [p],
+    strokeColor: currentColor,
+    voice: null
+  };
+});
+hudCv.addEventListener('pointermove', e => {
+  const ps = pStates[e.pointerId];
+  if (!ps) return;
+  const tNow = performance.now();
+  const p = stagePos(e);
+  if (rainbow) { hue = (hue + 4) % 360; currentColor = `hsl(${hue}, 100%, 60%)`; updateBrushPrev(); }
+  const speed = dist(ps.last, p) / Math.max(tNow - ps.last.t, 1);
+  const width = Math.max(2, brushSize * Math.max(.45, 1.25 - speed * 4));
+  if (brushType === 'laser') {
+    lasers.push({ ax: ps.last.x, ay: ps.last.y, bx: p.x, by: p.y, color: currentColor, t: tNow });
+    if (mirrorMode) lasers.push({ ax: W - ps.last.x, ay: ps.last.y, bx: W - p.x, by: p.y, color: currentColor, t: tNow });
+  } else {
+    drawSeg(ps.last, p, currentColor, width);
+    if (mirrorMode) drawSeg({ x: W - ps.last.x, y: ps.last.y }, { x: W - p.x, y: p.y }, currentColor, width);
+    ps.strokePts.push(p);
+    if (ps.strokePts.length > 2500) ps.strokePts.shift();
+    ps.strokeColor = currentColor;
+  }
+  if (sparkleMode && Math.random() < .5) spawnParts(p.x, p.y, currentColor, 2, 1.3);
+  if (musicMode) musicTick(ps, p.y, speed);
+  ps.last = { x: p.x, y: p.y, t: tNow };
+});
+function pointerEnd(e) {
+  const ps = pStates[e.pointerId];
+  if (!ps) return;
+  if (shapeMagic && brushType !== 'laser' && ps.strokePts.length >= 8) {
+    trySnapShape(ps.strokePts, ps.strokeColor || currentColor);
+  }
+  musicRelease(ps);
+  scheduleSave();
+  delete pStates[e.pointerId];
+}
+hudCv.addEventListener('pointerup', pointerEnd);
+hudCv.addEventListener('pointercancel', pointerEnd);
 
 /* ================= запуск нейронки =================
    MediaPipe Tasks HandLandmarker — новое поколение трекинга:
@@ -1716,8 +1840,19 @@ const CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
   } catch (e) {
     console.error(e);
     setStatus('❌ ' + (e.name === 'NotAllowedError'
-      ? 'Нет доступа к камере — разреши её и обнови страницу'
-      : 'Не удалось загрузить нейронку — проверь интернет и обнови страницу'));
+      ? 'Нет камеры — но рисовать пальцем или мышкой можно!'
+      : 'Нейронка не загрузилась — но рисовать пальцем или мышкой можно!'));
+    introEl.classList.add('hidden');
+    // без камеры искры и лазер всё равно должны жить
+    (function fallbackLoop() {
+      const tNow = performance.now();
+      const dtF = Math.min(tNow - lastFrameT, 100);
+      lastFrameT = tNow;
+      hctx.clearRect(0, 0, W, H);
+      stepParts(dtF);
+      stepLasers(tNow);
+      requestAnimationFrame(fallbackLoop);
+    })();
   }
 })();
 </script>
