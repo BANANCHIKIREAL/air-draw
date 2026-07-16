@@ -1,6 +1,6 @@
 # ✦ Air Draw
 
-**v1.3.0 · by BANANCHIKIREAL**
+**v1.3.1 · by BANANCHIKIREAL**
 
 Рисуй в воздухе руками — камера всё видит! Браузерное приложение с трекингом рук через нейронку (MediaPipe HandLandmarker на GPU).
 

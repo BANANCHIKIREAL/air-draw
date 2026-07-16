@@ -201,6 +201,15 @@
     background: linear-gradient(to top, #00f0ff, #ff2d95);
     pointer-events: none;
   }
+  #sizerTrack .tick {
+    position: absolute;
+    left: 50%;
+    width: 20px; height: 2px;
+    transform: translate(-50%, 50%);
+    background: rgba(255,255,255,.35);
+    border-radius: 1px;
+    pointer-events: none;
+  }
   #sizerKnob {
     position: absolute; left: 50%;
     width: 26px; height: 26px;
@@ -563,7 +572,7 @@
 
   <div id="logo">✦ AIR DRAW</div>
   <div id="fps"></div>
-  <div id="credits">v1.3.0 · by <b>BANANCHIKIREAL</b></div>
+  <div id="credits">v1.3.1 · by <b>BANANCHIKIREAL</b></div>
 
   <div id="toolbar" class="glass">
     <button class="tbtn" id="btnPerf"    data-tip="Турбо-режим: максимум FPS (T)">⚡</button>
@@ -617,7 +626,7 @@
       <div class="gestRow"><span class="ico">🎨</span><span>Палитра, кисти и слайдер — тыкай пальцем, над меню рисование выключается</span></div>
       <div class="gestRow"><span class="ico">📱</span><span>Можно рисовать и <b>пальцем по экрану</b> (или мышкой)</span></div>
       <div class="go">Покажи руку в камеру, чтобы начать ▸</div>
-      <div class="ver">v1.3.0 · автор: BANANCHIKIREAL</div>
+      <div class="ver">v1.3.1 · автор: BANANCHIKIREAL</div>
     </div>
   </div>
 </div>
@@ -700,14 +709,35 @@ const trackEl   = document.getElementById('sizerTrack');
 const fillEl    = document.getElementById('sizerFill');
 const knobEl    = document.getElementById('sizerKnob');
 const brushPrev = document.getElementById('brushPrev');
-const SIZE_MIN = 2, SIZE_MAX = 64;
+// размер по уровням: ступени вместо плавной шкалы — пальцем не промахнёшься
+const SIZE_LEVELS = [2, 5, 8, 12, 18, 26, 40, 64];
+let brushLevel = -1;
 
-function setBrushSize(v) {
-  brushSize = Math.max(SIZE_MIN, Math.min(SIZE_MAX, v));
-  const k = (brushSize - SIZE_MIN) / (SIZE_MAX - SIZE_MIN);
+function setBrushLevel(idx) {
+  idx = Math.max(0, Math.min(SIZE_LEVELS.length - 1, idx));
+  const changed = idx !== brushLevel && brushLevel !== -1;
+  brushLevel = idx;
+  brushSize = SIZE_LEVELS[idx];
+  const k = idx / (SIZE_LEVELS.length - 1);
   fillEl.style.height = (k * 100) + '%';
   knobEl.style.bottom = (k * 100) + '%';
   updateBrushPrev();
+  if (changed) tone(450 + idx * 60, .04, .08);
+}
+function setBrushSize(v) {   // по значению — притягиваем к ближайшему уровню
+  let idx = 0;
+  for (let i = 0; i < SIZE_LEVELS.length; i++) {
+    if (Math.abs(SIZE_LEVELS[i] - v) < Math.abs(SIZE_LEVELS[idx] - v)) idx = i;
+  }
+  setBrushLevel(idx);
+}
+
+// риски уровней на шкале
+for (let i = 0; i < SIZE_LEVELS.length; i++) {
+  const t = document.createElement('div');
+  t.className = 'tick';
+  t.style.bottom = (i / (SIZE_LEVELS.length - 1) * 100) + '%';
+  trackEl.appendChild(t);
 }
 function updateBrushPrev() {
   const d = Math.max(4, Math.min(46, brushSize * 1.6));
@@ -720,7 +750,7 @@ function updateBrushPrev() {
 function sizeFromY(clientY) {
   const r = trackEl.getBoundingClientRect();
   const k = 1 - Math.max(0, Math.min(1, (clientY - r.top) / r.height));
-  setBrushSize(SIZE_MIN + k * (SIZE_MAX - SIZE_MIN));
+  setBrushLevel(Math.round(k * (SIZE_LEVELS.length - 1)));
 }
 let sizerDrag = false;
 trackEl.addEventListener('pointerdown', e => { sizerDrag = true; sizeFromY(e.clientY); });
