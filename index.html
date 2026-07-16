@@ -157,20 +157,22 @@
     position: absolute;
     left: 12px; bottom: 16px;
     z-index: 6;
-    display: flex; gap: 8px;
+    display: grid;
+    grid-template-columns: repeat(4, auto);
+    gap: 8px;
     padding: 8px;
   }
   .bbtn {
-    height: 42px;
-    padding: 0 14px;
+    width: 42px; height: 42px;
     border-radius: 12px;
     border: 1px solid rgba(255,255,255,.15);
     background: rgba(255,255,255,.06);
     color: #fff;
-    font-size: 14px;
+    font-size: 19px;
     cursor: pointer;
-    display: flex; align-items: center; gap: 7px;
+    display: grid; place-items: center;
     transition: all .15s;
+    position: relative;
   }
   .bbtn:hover { background: rgba(255,255,255,.16); }
   .bbtn.active {
@@ -178,6 +180,23 @@
     border-color: rgba(255,45,149,.7);
     box-shadow: 0 0 14px rgba(255,45,149,.4);
   }
+  .bbtn::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 4px 10px;
+    background: rgba(5,5,15,.9);
+    border: 1px solid rgba(255,255,255,.15);
+    border-radius: 8px;
+    font-size: 12px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .15s;
+  }
+  .bbtn:hover::after { opacity: 1; }
 
   /* ---------- слайдер размера ---------- */
   #sizer {
@@ -330,14 +349,14 @@
   @media (max-width: 700px), (pointer: coarse) {
     #toolbar { flex-wrap: wrap; max-width: 62vw; justify-content: flex-end; padding: 5px; gap: 5px; }
     .tbtn { width: 34px; height: 34px; font-size: 15px; border-radius: 9px; }
-    .tbtn::after { display: none; }
+    .tbtn::after, .bbtn::after { display: none; }
     .swatch { width: 28px; height: 28px; font-size: 13px; }
     #palette { gap: 6px; padding: 8px 6px; left: 8px; }
     #sizer { padding: 10px 7px; right: 8px; }
     #sizerTrack { height: 100px; }
     #status { font-size: 12px; padding: 7px 13px; bottom: 8px; max-width: 92vw; white-space: normal; text-align: center; }
     #brushes { gap: 4px; padding: 5px; bottom: 8px; left: 8px; }
-    .bbtn { height: 32px; padding: 0 8px; font-size: 11px; }
+    .bbtn { width: 32px; height: 32px; font-size: 14px; }
     #logo { font-size: 13px; letter-spacing: 2px; }
     #fps { top: 34px; font-size: 10px; }
     #credits { font-size: 9px; right: 8px; bottom: 44px; }
@@ -595,10 +614,14 @@
   <div id="palette" class="glass"></div>
 
   <div id="brushes" class="glass">
-    <button class="bbtn active" data-brush="neon">🖊️ Неон</button>
-    <button class="bbtn" data-brush="marker">🖍️ Маркер</button>
-    <button class="bbtn" data-brush="spray">🌫️ Спрей</button>
-    <button class="bbtn" data-brush="laser">🔴 Лазер</button>
+    <button class="bbtn active" data-brush="neon"      data-tip="Неон (1)">🖊️</button>
+    <button class="bbtn" data-brush="marker"    data-tip="Маркер (2)">🖍️</button>
+    <button class="bbtn" data-brush="spray"     data-tip="Спрей (3)">🌫️</button>
+    <button class="bbtn" data-brush="laser"     data-tip="Лазер — тает сам (4)">🔴</button>
+    <button class="bbtn" data-brush="pen"       data-tip="Перо (5)">✒️</button>
+    <button class="bbtn" data-brush="lightning" data-tip="Молния (6)">⚡</button>
+    <button class="bbtn" data-brush="fire"      data-tip="Огонь (7)">🔥</button>
+    <button class="bbtn" data-brush="dots"      data-tip="Точки (8)">⚪</button>
   </div>
 
   <div id="sizer" class="glass">
@@ -762,7 +785,11 @@ applySwatch(swatches[0], true);
 /* ================= кисти ================= */
 let brushType = 'neon';
 const brushBtns = [...document.querySelectorAll('.bbtn')];
-const BRUSH_NAMES = { neon: '🖊️ Неон', marker: '🖍️ Маркер', spray: '🌫️ Спрей', laser: '🔴 Лазер (тает сам)' };
+const BRUSH_NAMES = {
+  neon: '🖊️ Неон', marker: '🖍️ Маркер', spray: '🌫️ Спрей', laser: '🔴 Лазер (тает сам)',
+  pen: '✒️ Перо', lightning: '⚡ Молния', fire: '🔥 Огонь', dots: '⚪ Точки'
+};
+let dotAnchor = null;   // якорь для кисти "точки"
 function selectBrush(type, silent) {
   if (brushType === type) return;
   brushType = type;
@@ -799,6 +826,72 @@ function drawSeg(a, b, color, width) {
       }
     }
     dctx.restore();
+  } else if (brushType === 'pen') {
+    // каллиграфия: плоское перо под 45 градусов
+    const nx = Math.cos(-Math.PI / 4), ny = Math.sin(-Math.PI / 4);
+    const w = Math.max(3, width * 1.5);
+    dctx.save();
+    dctx.fillStyle = color;
+    dctx.beginPath();
+    dctx.moveTo(a.x - nx * w / 2, a.y - ny * w / 2);
+    dctx.lineTo(a.x + nx * w / 2, a.y + ny * w / 2);
+    dctx.lineTo(b.x + nx * w / 2, b.y + ny * w / 2);
+    dctx.lineTo(b.x - nx * w / 2, b.y - ny * w / 2);
+    dctx.closePath();
+    dctx.fill();
+    dctx.restore();
+  } else if (brushType === 'lightning') {
+    // ломаная с дрожанием + свечение
+    dctx.save();
+    dctx.strokeStyle = color;
+    dctx.shadowColor = color;
+    dctx.shadowBlur = perfMode ? 0 : 14;
+    dctx.lineCap = 'round';
+    dctx.lineJoin = 'round';
+    dctx.lineWidth = Math.max(1.5, width * .35);
+    const dL = dist(a, b), steps = Math.max(2, Math.ceil(dL / 8));
+    dctx.beginPath();
+    dctx.moveTo(a.x, a.y);
+    for (let i = 1; i < steps; i++) {
+      const t = i / steps, j = width * .9;
+      dctx.lineTo(a.x + (b.x - a.x) * t + (Math.random() - .5) * j,
+                  a.y + (b.y - a.y) * t + (Math.random() - .5) * j);
+    }
+    dctx.lineTo(b.x, b.y);
+    dctx.stroke();
+    dctx.restore();
+  } else if (brushType === 'fire') {
+    // тёплый штрих с жёлтой сердцевиной + искры вверх (цвет всегда огненный)
+    dctx.save();
+    dctx.lineCap = 'round';
+    dctx.strokeStyle = '#ff9500';
+    dctx.shadowColor = '#ff5a00';
+    dctx.shadowBlur = perfMode ? 0 : 16;
+    dctx.lineWidth = width;
+    dctx.beginPath(); dctx.moveTo(a.x, a.y); dctx.lineTo(b.x, b.y); dctx.stroke();
+    dctx.shadowBlur = 0;
+    dctx.strokeStyle = '#ffe600';
+    dctx.lineWidth = Math.max(1.5, width * .45);
+    dctx.beginPath(); dctx.moveTo(a.x, a.y); dctx.lineTo(b.x, b.y); dctx.stroke();
+    dctx.restore();
+    if (Math.random() < .8) spawnParts(b.x, b.y, Math.random() < .5 ? '#ff7a00' : '#ffe600', 2, 1.6);
+  } else if (brushType === 'dots') {
+    // ровный пунктир из кружков
+    const gap = Math.max(width * 2, 12);
+    if (!dotAnchor || Math.hypot(b.x - dotAnchor.x, b.y - dotAnchor.y) > 220) {
+      dotAnchor = { x: a.x, y: a.y };
+    }
+    if (Math.hypot(b.x - dotAnchor.x, b.y - dotAnchor.y) >= gap) {
+      dctx.save();
+      dctx.fillStyle = color;
+      dctx.shadowColor = color;
+      dctx.shadowBlur = perfMode ? 0 : 12;
+      dctx.beginPath();
+      dctx.arc(b.x, b.y, Math.max(2, width * .55), 0, Math.PI * 2);
+      dctx.fill();
+      dctx.restore();
+      dotAnchor = { x: b.x, y: b.y };
+    }
   } else {
     strokeSeg(a, b, color, width, false);
   }
@@ -1892,6 +1985,10 @@ document.addEventListener('keydown', e => {
   if (k === '2') selectBrush('marker');
   if (k === '3') selectBrush('spray');
   if (k === '4') selectBrush('laser');
+  if (k === '5') selectBrush('pen');
+  if (k === '6') selectBrush('lightning');
+  if (k === '7') selectBrush('fire');
+  if (k === '8') selectBrush('dots');
 });
 function savePng() {
   const out = document.createElement('canvas');
