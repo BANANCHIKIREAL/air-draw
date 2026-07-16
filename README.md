@@ -41,4 +41,4 @@ python -m http.server 8347
 
 ## Технологии
 
-Ванильный HTML/CSS/JS в одном файле. MediaPipe Tasks Vision (HandLandmarker, GPU-делегат), One Euro фильтр для сглаживания, Canvas 2D, MediaRecorder.
+Ванильный HTML/CSS/JS в одном файле. MediaPipe Tasks Vision (GestureRecognizer: трекинг руки + нейро-классификатор жестов, GPU-делегат, фолбэк на HandLandmarker), голосование жестов по кадрам, One Euro фильтр для сглаживания, Canvas 2D, MediaRecorder.
