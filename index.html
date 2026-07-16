@@ -330,28 +330,39 @@
     border-radius: 50%;
     background: rgba(13,13,26,.75);
     border: 1px solid rgba(255,255,255,.3);
-    color: #fff;
-    font-size: 17px;
-    line-height: 1;
     cursor: pointer;
     padding: 0;
   }
+  /* стрелка рисуется CSS-ом — символы-треугольники есть не во всех шрифтах */
+  body.mobile .edgeTab::before {
+    content: '';
+    width: 9px; height: 9px;
+    border-right: 2.5px solid rgba(255,255,255,.9);
+    border-bottom: 2.5px solid rgba(255,255,255,.9);
+    border-radius: 1px;
+  }
+  body.mobile .edgeTab.dir-right::before { transform: rotate(-45deg); }
+  body.mobile .edgeTab.dir-left::before  { transform: rotate(135deg); }
+  body.mobile .edgeTab.dir-down::before  { transform: rotate(45deg); }
+  body.mobile .edgeTab.dir-up::before    { transform: rotate(-135deg); }
   body.mobile .tab-left   { left: 5px; top: 50%; transform: translateY(-50%); }
   body.mobile .tab-right  { right: 5px; top: 50%; transform: translateY(-50%); }
   body.mobile .tab-top    { top: 5px; left: 50%; transform: translateX(-50%); }
   body.mobile .tab-bottom { bottom: 5px; left: 5px; }
 
   body.mobile #palette, body.mobile #sizer, body.mobile #toolbar, body.mobile #brushes {
-    transition: transform .25s ease, opacity .25s ease;
+    transition: transform .25s ease, opacity .25s ease, visibility .25s;
   }
   body.mobile #palette { left: 48px; }
   body.mobile #sizer   { right: 48px; }
   body.mobile #toolbar { top: 48px; right: 8px; flex-wrap: wrap; max-width: 64vw; justify-content: flex-end; }
   body.mobile #brushes { left: 48px; bottom: 8px; }
-  body.mobile #palette.collapsed { transform: translate(-160%, -50%); opacity: 0; pointer-events: none; }
-  body.mobile #sizer.collapsed   { transform: translate(160%, -50%);  opacity: 0; pointer-events: none; }
-  body.mobile #toolbar.collapsed { transform: translateY(-180%); opacity: 0; pointer-events: none; }
-  body.mobile #brushes.collapsed { transform: translateY(180%); opacity: 0; pointer-events: none; }
+  /* visibility: hidden обязательно — backdrop-filter в Chrome на Android
+     игнорирует opacity и рисует мутную "плиту" даже у прозрачной панели */
+  body.mobile #palette.collapsed { transform: translate(-160%, -50%); opacity: 0; visibility: hidden; pointer-events: none; }
+  body.mobile #sizer.collapsed   { transform: translate(160%, -50%);  opacity: 0; visibility: hidden; pointer-events: none; }
+  body.mobile #toolbar.collapsed { transform: translateY(-180%); opacity: 0; visibility: hidden; pointer-events: none; }
+  body.mobile #brushes.collapsed { transform: translateY(180%); opacity: 0; visibility: hidden; pointer-events: none; }
 
   body.mobile #btnSettings {
     position: absolute;
@@ -532,7 +543,7 @@
 
   <div id="logo">✦ AIR DRAW</div>
   <div id="fps"></div>
-  <div id="credits">v1.2.3 · by <b>BANANCHIKIREAL</b></div>
+  <div id="credits">v1.2.4 · by <b>BANANCHIKIREAL</b></div>
 
   <div id="toolbar" class="glass">
     <button class="tbtn" id="btnPerf"    data-tip="Турбо-режим: максимум FPS (T)">⚡</button>
@@ -586,7 +597,7 @@
       <div class="gestRow"><span class="ico">🎨</span><span>Палитра, кисти и слайдер — тыкай пальцем, над меню рисование выключается</span></div>
       <div class="gestRow"><span class="ico">📱</span><span>Можно рисовать и <b>пальцем по экрану</b> (или мышкой)</span></div>
       <div class="go">Покажи руку в камеру, чтобы начать ▸</div>
-      <div class="ver">v1.2.3 · автор: BANANCHIKIREAL</div>
+      <div class="ver">v1.2.4 · автор: BANANCHIKIREAL</div>
     </div>
   </div>
 </div>
@@ -612,7 +623,7 @@ let hue = 0;
 const paletteEl = document.getElementById('palette');
 const swatches = [];
 COLORS.forEach(c => addSwatch(c, false, c, ''));
-addSwatch(null, true, 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)', '🌈');
+addSwatch(null, true, 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)', '');
 
 function addSwatch(color, isRainbow, bg, txt) {
   const el = document.createElement('div');
@@ -1869,20 +1880,20 @@ if (window.matchMedia('(pointer: coarse)').matches) {
   document.body.classList.add('mobile');
   stage.appendChild(btnSettings);   // ⚙️ всегда на экране, отдельно от тулбара
   const TABS = [
-    { panel: paletteEl, cls: 'tab-left',   open: '◂', closed: '▸' },
-    { panel: sizerEl,   cls: 'tab-right',  open: '▸', closed: '◂' },
-    { panel: toolbarEl, cls: 'tab-top',    open: '▴', closed: '▾' },
-    { panel: brushesEl, cls: 'tab-bottom', open: '▾', closed: '▴' }
+    { panel: paletteEl, cls: 'tab-left',   open: 'dir-left',  closed: 'dir-right' },
+    { panel: sizerEl,   cls: 'tab-right',  open: 'dir-right', closed: 'dir-left' },
+    { panel: toolbarEl, cls: 'tab-top',    open: 'dir-up',    closed: 'dir-down' },
+    { panel: brushesEl, cls: 'tab-bottom', open: 'dir-down',  closed: 'dir-up' }
   ];
   for (const t of TABS) {
     t.panel.classList.add('collapsed');
     const tab = document.createElement('button');
-    tab.className = 'edgeTab ' + t.cls;
-    tab.textContent = t.closed;
+    tab.className = 'edgeTab ' + t.cls + ' ' + t.closed;
     tab.onclick = () => {
       const nowCollapsed = !t.panel.classList.contains('collapsed');
       t.panel.classList.toggle('collapsed', nowCollapsed);
-      tab.textContent = nowCollapsed ? t.closed : t.open;
+      tab.classList.remove(t.open, t.closed);
+      tab.classList.add(nowCollapsed ? t.closed : t.open);
     };
     stage.appendChild(tab);
   }
