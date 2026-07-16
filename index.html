@@ -112,10 +112,23 @@
     position: absolute;
     left: 12px; top: 50%;
     transform: translateY(-50%);
-    display: flex; flex-direction: column; gap: 10px;
+    display: grid;
+    grid-template-columns: repeat(2, auto);
+    gap: 9px;
     z-index: 6;
     padding: 12px 10px;
   }
+  /* кружок "свой цвет" — системная пипетка */
+  input.swatch {
+    -webkit-appearance: none;
+    appearance: none;
+    padding: 0;
+    border: 3px dashed rgba(255,255,255,.45);
+    background: none;
+    cursor: pointer;
+  }
+  input.swatch::-webkit-color-swatch-wrapper { padding: 2px; }
+  input.swatch::-webkit-color-swatch { border: none; border-radius: 50%; }
   .swatch {
     width: 38px; height: 38px;
     border-radius: 50%;
@@ -550,7 +563,7 @@
 
   <div id="logo">✦ AIR DRAW</div>
   <div id="fps"></div>
-  <div id="credits">v1.2.4 · by <b>BANANCHIKIREAL</b></div>
+  <div id="credits">v1.3.0 · by <b>BANANCHIKIREAL</b></div>
 
   <div id="toolbar" class="glass">
     <button class="tbtn" id="btnPerf"    data-tip="Турбо-режим: максимум FPS (T)">⚡</button>
@@ -604,7 +617,7 @@
       <div class="gestRow"><span class="ico">🎨</span><span>Палитра, кисти и слайдер — тыкай пальцем, над меню рисование выключается</span></div>
       <div class="gestRow"><span class="ico">📱</span><span>Можно рисовать и <b>пальцем по экрану</b> (или мышкой)</span></div>
       <div class="go">Покажи руку в камеру, чтобы начать ▸</div>
-      <div class="ver">v1.2.4 · автор: BANANCHIKIREAL</div>
+      <div class="ver">v1.3.0 · автор: BANANCHIKIREAL</div>
     </div>
   </div>
 </div>
@@ -622,31 +635,59 @@ const dctx = drawCv.getContext('2d');
 const hctx = hudCv.getContext('2d');
 
 /* ================= палитра ================= */
-const COLORS = ['#00f0ff', '#ff2d95', '#7cff00', '#ffe600', '#ff7a00', '#b26bff', '#ffffff'];
+const COLORS = ['#00f0ff', '#2979ff', '#b26bff', '#ff2d95', '#ff3131', '#ff7a00', '#ffe600', '#7cff00', '#00e676', '#ffffff'];
+const GRADS = [[190, 330], [270, 390], [120, 220], [0, 60]];   // пары оттенков для градиентных кистей
 let currentColor = COLORS[0];
 let rainbow = false;
 let hue = 0;
+let gradPair = null;
+let gradPhase = 0;
 
 const paletteEl = document.getElementById('palette');
 const swatches = [];
-COLORS.forEach(c => addSwatch(c, false, c, ''));
-addSwatch(null, true, 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)', '');
+COLORS.forEach(c => addSwatch({ color: c, bg: c }));
+GRADS.forEach(g => addSwatch({
+  grad: g,
+  cls: 'rainbowSw',
+  bg: `linear-gradient(135deg, hsl(${g[0]},100%,55%), hsl(${g[1]},100%,55%))`
+}));
+addSwatch({ rainbow: true, cls: 'rainbowSw', bg: 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)' });
 
-function addSwatch(color, isRainbow, bg, txt) {
+// свой цвет — системная пипетка
+const customIn = document.createElement('input');
+customIn.type = 'color';
+customIn.className = 'swatch customSw';
+try { customIn.value = localStorage.getItem('airdraw-custom') || '#ff0080'; } catch (e) {}
+customIn.title = 'Свой цвет';
+const customSw = { el: customIn, custom: true, color: null, rainbow: false, grad: null };
+customIn.oninput = () => {
+  try { localStorage.setItem('airdraw-custom', customIn.value); } catch (e) {}
+  applySwatch(customSw);
+};
+customIn.addEventListener('click', () => applySwatch(customSw));
+paletteEl.appendChild(customIn);
+swatches.push(customSw);
+
+function addSwatch(def) {
   const el = document.createElement('div');
-  el.className = 'swatch';
-  if (isRainbow) el.classList.add('rainbowSw');
-  el.style.background = bg;
-  el.style.setProperty('--c', color || '#fff');
-  el.textContent = txt;
-  el.onclick = () => selectColor(color, isRainbow, el);
+  el.className = 'swatch' + (def.cls ? ' ' + def.cls : '');
+  el.style.background = def.bg;
+  el.style.setProperty('--c', def.color || '#fff');
+  const sw = { el, color: def.color || null, rainbow: !!def.rainbow, grad: def.grad || null };
+  el.onclick = () => applySwatch(sw);
   paletteEl.appendChild(el);
-  swatches.push({ el, color, rainbow: isRainbow });
+  swatches.push(sw);
 }
-function selectColor(c, isRainbow, el, silent) {
+function applySwatch(sw, silent) {
+  const c = sw.custom ? sw.el.value : sw.color;
+  selectColor(c, sw.rainbow, sw.grad || null, sw.el, silent);
+}
+function selectColor(c, isRainbow, grad, el, silent) {
   const changed = !el.classList.contains('active');
   rainbow = isRainbow;
-  if (c) currentColor = c;
+  gradPair = grad;
+  if (grad) currentColor = `hsl(${grad[0]}, 100%, 60%)`;
+  else if (c) currentColor = c;
   swatches.forEach(s => s.el.classList.toggle('active', s.el === el));
   updateBrushPrev();
   if (changed && !silent) tone(700, .05, .12);
@@ -659,7 +700,7 @@ const trackEl   = document.getElementById('sizerTrack');
 const fillEl    = document.getElementById('sizerFill');
 const knobEl    = document.getElementById('sizerKnob');
 const brushPrev = document.getElementById('brushPrev');
-const SIZE_MIN = 2, SIZE_MAX = 26;
+const SIZE_MIN = 2, SIZE_MAX = 64;
 
 function setBrushSize(v) {
   brushSize = Math.max(SIZE_MIN, Math.min(SIZE_MAX, v));
@@ -669,7 +710,7 @@ function setBrushSize(v) {
   updateBrushPrev();
 }
 function updateBrushPrev() {
-  const d = Math.max(4, brushSize * 1.6);
+  const d = Math.max(4, Math.min(46, brushSize * 1.6));
   brushPrev.style.width = d + 'px';
   brushPrev.style.height = d + 'px';
   const c = rainbow ? '#ff2d95' : currentColor;
@@ -686,7 +727,7 @@ trackEl.addEventListener('pointerdown', e => { sizerDrag = true; sizeFromY(e.cli
 window.addEventListener('pointermove', e => { if (sizerDrag) sizeFromY(e.clientY); });
 window.addEventListener('pointerup', () => sizerDrag = false);
 setBrushSize(8);
-selectColor(COLORS[0], false, swatches[0].el, true);
+applySwatch(swatches[0], true);
 
 /* ================= кисти ================= */
 let brushType = 'neon';
@@ -1447,8 +1488,8 @@ function uiHover(tip, st) {
     over = true;
     for (const sw of swatches) {
       const c = elCenter(sw.el);
-      if (Math.hypot(tip.x - c.x, tip.y - c.y) < 30 && !sw.el.classList.contains('active')) {
-        selectColor(sw.color, sw.rainbow, sw.el);
+      if (Math.hypot(tip.x - c.x, tip.y - c.y) < 26 && !sw.el.classList.contains('active')) {
+        applySwatch(sw);
       }
     }
   }
@@ -1604,6 +1645,12 @@ function onResults(results) {
       if (gesture === 'draw') {
         st.last2 = null; st.smooth2 = null; st.f2x = null; st.f2y = null;
         if (rainbow) { hue = (hue + 4) % 360; currentColor = `hsl(${hue}, 100%, 60%)`; updateBrushPrev(); }
+        else if (gradPair) {
+          gradPhase += .1;
+          const k = (Math.sin(gradPhase) + 1) / 2;
+          currentColor = `hsl(${gradPair[0] + (gradPair[1] - gradPair[0]) * k}, 100%, 60%)`;
+          updateBrushPrev();
+        }
         if (!isLaser) {
           (st.strokePts || (st.strokePts = [])).push({ x: st.smooth.x, y: st.smooth.y });
           if (st.strokePts.length > 2500) st.strokePts.shift();
@@ -1854,6 +1901,12 @@ hudCv.addEventListener('pointermove', e => {
   const tNow = performance.now();
   const p = stagePos(e);
   if (rainbow) { hue = (hue + 4) % 360; currentColor = `hsl(${hue}, 100%, 60%)`; updateBrushPrev(); }
+  else if (gradPair) {
+    gradPhase += .1;
+    const k = (Math.sin(gradPhase) + 1) / 2;
+    currentColor = `hsl(${gradPair[0] + (gradPair[1] - gradPair[0]) * k}, 100%, 60%)`;
+    updateBrushPrev();
+  }
   const speed = dist(ps.last, p) / Math.max(tNow - ps.last.t, 1);
   const width = Math.max(2, brushSize * Math.max(.45, 1.25 - speed * 4));
   if (brushType === 'laser') {
