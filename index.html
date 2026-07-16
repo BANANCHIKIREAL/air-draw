@@ -373,21 +373,46 @@
     display: none;
   }
   #settingsPanel.open { display: block; }
-  #settingsPanel h3 {
+  #spHead {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 2px;
+  }
+  #spHead h3 {
     font-size: 15px; letter-spacing: 1px;
-    margin-bottom: 8px;
+    margin: 0;
     color: rgba(255,255,255,.9);
   }
+  #spClose {
+    width: 30px; height: 30px;
+    border-radius: 9px;
+    background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.15);
+    color: #fff; font-size: 13px;
+    cursor: pointer;
+  }
+  #spClose:hover { background: rgba(255,45,95,.35); }
+  .spHint {
+    font-size: 11px;
+    color: rgba(255,255,255,.45);
+    margin: 6px 0 2px;
+  }
   #settingsPanel .sec {
+    display: flex; align-items: center; gap: 8px;
     font-size: 11px;
     color: rgba(255,255,255,.5);
-    margin: 12px 0 5px;
-    letter-spacing: 1px;
+    margin: 14px 0 6px;
+    letter-spacing: 1.5px;
     text-transform: uppercase;
   }
+  #settingsPanel .sec::after {
+    content: '';
+    flex: 1; height: 1px;
+    background: rgba(255,255,255,.12);
+  }
   .srow {
-    display: flex; align-items: center; gap: 8px;
-    padding: 8px 10px;
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 8px;
+    margin: 2px 0;
     border-radius: 10px;
     cursor: pointer;
     font-size: 14px;
@@ -396,15 +421,47 @@
   }
   .srow:hover { background: rgba(255,255,255,.08); }
   .srow.on {
-    border-color: rgba(0,240,255,.5);
-    background: rgba(0,240,255,.10);
+    border-color: rgba(0,240,255,.45);
+    background: rgba(0,240,255,.08);
   }
-  .srow .st {
-    margin-left: auto;
-    opacity: .75;
-    font-size: 12px;
-    white-space: nowrap;
+  .srow .lbl {
+    flex: 1; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
+  .srow .act { opacity: .5; font-size: 11px; flex-shrink: 0; }
+  .switch {
+    width: 36px; height: 20px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.15);
+    position: relative;
+    flex-shrink: 0;
+    transition: background .15s, box-shadow .15s;
+  }
+  .switch .knob {
+    position: absolute; top: 2px; left: 2px;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    transition: left .15s;
+  }
+  .switch.on {
+    background: rgba(0,240,255,.6);
+    box-shadow: 0 0 10px rgba(0,240,255,.4);
+  }
+  .switch.on .knob { left: 18px; }
+  .pin {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: transparent;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0;
+    flex-shrink: 0;
+    transition: opacity .15s, background .15s;
+  }
+  .pin:hover { background: rgba(255,255,255,.12); }
+  .pin.off { opacity: .25; filter: grayscale(1); }
 
   /* ---------- обратный отсчёт фото ---------- */
   #countdown {
@@ -915,53 +972,59 @@ function applyTbVis() {
 }
 function buildSettings() {
   settingsPanel.innerHTML = '';
-  const h = document.createElement('h3');
-  h.textContent = '⚙️ Настройки';
-  settingsPanel.appendChild(h);
 
-  const sec1 = document.createElement('div');
-  sec1.className = 'sec';
-  sec1.textContent = 'Действия и режимы';
-  settingsPanel.appendChild(sec1);
-  for (const b of TB_BUTTONS) {
-    const row = document.createElement('div');
-    row.className = 'srow';
-    row.dataset.proxy = b.id;
-    row.innerHTML = `<span>${b.label}</span><span class="st"></span>`;
-    row.onclick = () => { document.getElementById(b.id).click(); refreshSettings(); };
-    settingsPanel.appendChild(row);
-  }
+  const head = document.createElement('div');
+  head.id = 'spHead';
+  head.innerHTML = '<h3>⚙️ Настройки</h3><button id="spClose">✕</button>';
+  head.querySelector('#spClose').onclick = () => btnSettings.click();
+  settingsPanel.appendChild(head);
 
-  const sec2 = document.createElement('div');
-  sec2.className = 'sec';
-  sec2.textContent = 'Какие кнопки видны на экране';
-  settingsPanel.appendChild(sec2);
-  for (const b of TB_BUTTONS) {
-    const row = document.createElement('div');
-    row.className = 'srow';
-    row.dataset.vis = b.id;
-    row.innerHTML = `<span>${b.label}</span><span class="st"></span>`;
-    row.onclick = () => {
-      tbVis[b.id] = tbVis[b.id] === false;
-      try { localStorage.setItem(TB_KEY, JSON.stringify(tbVis)); } catch (e) {}
-      applyTbVis();
-      refreshSettings();
-    };
-    settingsPanel.appendChild(row);
+  const hint = document.createElement('div');
+  hint.className = 'spHint';
+  hint.textContent = '📌 — закрепить кнопку на экране или убрать с него';
+  settingsPanel.appendChild(hint);
+
+  const groups = [
+    { title: 'Режимы',   ids: ['btnPerf', 'btnMirror', 'btnSparkle', 'btnMusic', 'btnShape', 'btnCouch'] },
+    { title: 'Действия', ids: ['btnUndo', 'btnCam', 'btnRec', 'btnShot', 'btnClear', 'btnSave'] }
+  ];
+  for (const g of groups) {
+    const sec = document.createElement('div');
+    sec.className = 'sec';
+    sec.textContent = g.title;
+    settingsPanel.appendChild(sec);
+    for (const id of g.ids) {
+      const b = TB_BUTTONS.find(x => x.id === id);
+      if (!b) continue;
+      const row = document.createElement('div');
+      row.className = 'srow';
+      row.dataset.proxy = id;
+      row.innerHTML =
+        `<span class="lbl">${b.label}</span>` +
+        (b.toggle ? '<span class="switch"><span class="knob"></span></span>' : '<span class="act">запустить ▶</span>') +
+        '<button class="pin" title="Закрепить кнопку на экране / убрать">📌</button>';
+      row.onclick = () => { document.getElementById(id).click(); refreshSettings(); };
+      row.querySelector('.pin').onclick = e => {
+        e.stopPropagation();
+        tbVis[id] = tbVis[id] === false;
+        try { localStorage.setItem(TB_KEY, JSON.stringify(tbVis)); } catch (err) {}
+        applyTbVis();
+        refreshSettings();
+      };
+      settingsPanel.appendChild(row);
+    }
   }
 }
 function refreshSettings() {
   settingsPanel.querySelectorAll('.srow[data-proxy]').forEach(row => {
-    const b = TB_BUTTONS.find(x => x.id === row.dataset.proxy);
-    const on = document.getElementById(b.id).classList.contains('on') ||
-               (b.id === 'btnRec' && !!recorder);
+    const id = row.dataset.proxy;
+    const b = TB_BUTTONS.find(x => x.id === id);
+    const on = document.getElementById(id).classList.contains('on') ||
+               (id === 'btnRec' && !!recorder);
     row.classList.toggle('on', b.toggle && on);
-    row.querySelector('.st').textContent = b.toggle ? (on ? 'вкл' : 'выкл') : '▶';
-  });
-  settingsPanel.querySelectorAll('.srow[data-vis]').forEach(row => {
-    const hidden = tbVis[row.dataset.vis] === false;
-    row.classList.toggle('on', !hidden);
-    row.querySelector('.st').textContent = hidden ? 'скрыта' : 'на экране';
+    const sw = row.querySelector('.switch');
+    if (sw) sw.classList.toggle('on', on);
+    row.querySelector('.pin').classList.toggle('off', tbVis[id] === false);
   });
 }
 buildSettings();
@@ -1399,7 +1462,7 @@ function uiHover(tip, st) {
 
   // нажатие пальцем: навести на кнопку/стрелку и подержать полсекунды
   const el = document.elementFromPoint(s.left + tip.x, s.top + tip.y);
-  const act = el && el.closest ? el.closest('.tbtn, .srow, .edgeTab') : null;
+  const act = el && el.closest ? el.closest('.pin, #spClose, .tbtn, .srow, .edgeTab') : null;
   if (act) {
     over = true;
     if (st.hoverEl !== act) {
