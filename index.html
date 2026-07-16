@@ -1465,7 +1465,7 @@ function onResults(results) {
     const gesture = getGesture(lm);
     const tip = pts[TIP.index];
 
-    if (!perfMode) drawSkeleton(pts);
+    drawSkeleton(pts);   // после оптимизации дёшево — рисуем и в турбо
 
     /* --- палец над меню: рисование выключено --- */
     if (uiHover(tip, st)) {
@@ -1668,12 +1668,14 @@ function drawSkeleton(pts) {
     hctx.lineTo(pts[b].x, pts[b].y);
   }
   hctx.stroke();
+  // все суставы одним путём и одной заливкой — дёшево даже для турбо
   hctx.fillStyle = 'rgba(255,255,255,.3)';
+  hctx.beginPath();
   for (const p of pts) {
-    hctx.beginPath();
+    hctx.moveTo(p.x + 2.5, p.y);
     hctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
-    hctx.fill();
   }
+  hctx.fill();
 }
 function drawCursor(tip, mode) {
   hctx.save();
