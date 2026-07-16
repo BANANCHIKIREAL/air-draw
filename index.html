@@ -131,6 +131,9 @@
     transform: scale(1.22);
     box-shadow: 0 0 20px var(--c, #fff);
   }
+  /* радужный кружок без полупрозрачной окантовки — на градиенте она видна как полоски */
+  .swatch.rainbowSw { border-color: transparent; }
+  .swatch.rainbowSw.active { border-color: #fff; }
 
   /* ---------- кисти ---------- */
   #brushes {
@@ -357,23 +360,6 @@
   body.mobile #sizer   { right: 48px; }
   body.mobile #toolbar { top: 48px; right: 8px; flex-wrap: wrap; max-width: 64vw; justify-content: flex-end; }
   body.mobile #brushes { left: 48px; bottom: 8px; }
-
-  /* на телефоне у панелей нет стеклянных подложек — только сами кнопки,
-     иначе подложки выглядят как тёмные плитки */
-  body.mobile #palette, body.mobile #sizer, body.mobile #toolbar, body.mobile #brushes {
-    background: transparent;
-    border-color: transparent;
-    backdrop-filter: none;
-    box-shadow: none;
-    padding: 4px;
-  }
-  body.mobile .tbtn, body.mobile .bbtn {
-    background: rgba(13,13,26,.72);
-    border-color: rgba(255,255,255,.3);
-  }
-  body.mobile .swatch { border-color: rgba(255,255,255,.55); }
-  body.mobile #sizerTrack { background: rgba(255,255,255,.3); }
-  body.mobile #sizer .lbl { text-shadow: 0 1px 4px rgba(0,0,0,.95); }
   /* visibility: hidden обязательно — backdrop-filter в Chrome на Android
      игнорирует opacity и рисует мутную "плиту" даже у прозрачной панели */
   body.mobile #palette.collapsed { transform: translate(-160%, -50%); opacity: 0; visibility: hidden; pointer-events: none; }
@@ -645,6 +631,7 @@ addSwatch(null, true, 'conic-gradient(red, yellow, lime, cyan, blue, magenta, re
 function addSwatch(color, isRainbow, bg, txt) {
   const el = document.createElement('div');
   el.className = 'swatch';
+  if (isRainbow) el.classList.add('rainbowSw');
   el.style.background = bg;
   el.style.setProperty('--c', color || '#fff');
   el.textContent = txt;
