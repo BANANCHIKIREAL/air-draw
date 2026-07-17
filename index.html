@@ -1431,6 +1431,33 @@ function rdp(pts, eps) {
   }
   return [a, b];
 }
+function segDist(p, a, b) {
+  const l2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
+  if (l2 === 0) return Math.hypot(p.x - a.x, p.y - a.y);
+  let t = ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / l2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p.x - (a.x + t * (b.x - a.x)), p.y - (a.y + t * (b.y - a.y)));
+}
+// насколько нарисованное реально прилегает к многоугольнику
+function polyFitError(pts, cs) {
+  let maxD = 0;
+  for (const p of pts) {
+    let best = 1e9;
+    for (let i = 0; i < cs.length; i++) {
+      best = Math.min(best, segDist(p, cs[i], cs[(i + 1) % cs.length]));
+    }
+    maxD = Math.max(maxD, best);
+  }
+  return maxD;
+}
+function mergeCorners(cs, minD) {
+  const out = [];
+  for (const c of cs) {
+    if (!out.length || dist(out[out.length - 1], c) > minD) out.push(c);
+  }
+  if (out.length > 1 && dist(out[0], out[out.length - 1]) <= minD) out.pop();
+  return out;
+}
 function isAxisAligned(cs) {
   for (let i = 0; i < cs.length; i++) {
     const a = cs[i], b = cs[(i + 1) % cs.length];
@@ -1505,7 +1532,9 @@ function trySnapShape(rawPts, color) {
   dev /= n;
   const circleScore = dev / r;
 
-  if (circleScore < .12 && r > 18) {
+  // явный круг: порог 0.055 — даже ИДЕАЛЬНЫЙ квадрат даёт ~0.09,
+  // поэтому квадраты сюда больше не проваливаются
+  if (circleScore < .055 && r > 18) {
     if (restoreTopSnapshot()) {
       drawPerfectCircle(cx, cy, r, color);
       toast('📐 Идеальный круг!');
@@ -1514,7 +1543,7 @@ function trySnapShape(rawPts, color) {
     return;
   }
 
-  /* --- многоугольник: углы через RDP, начиная с самой дальней точки --- */
+  /* --- многоугольник: углы через RDP от самой дальней точки --- */
   let startI = 0, bestD = 0;
   for (let i = 0; i < n; i++) {
     const d = Math.hypot(pts[i].x - cx, pts[i].y - cy);
@@ -1522,19 +1551,30 @@ function trySnapShape(rawPts, color) {
   }
   const rot = pts.slice(startI).concat(pts.slice(0, startI));
   rot.push(rot[0]);
-  const corners = rdp(rot, Math.max(6, diag * .045));
+  let corners = rdp(rot, Math.max(5, diag * .035));
   corners.pop();
+  corners = mergeCorners(corners, diag * .1);
   const m = corners.length;
 
-  if (m >= 3 && m <= 6) {
+  if (m >= 3 && m <= 6 && polyFitError(pts, corners) < diag * .07 + 8) {
     if (!restoreTopSnapshot()) return;
+    const w = maxX - minX, h = maxY - minY;
     if (m === 4 && isAxisAligned(corners)) {
-      // почти ровный прямоугольник → идеально ровный
-      drawPerfectPolygon([
-        { x: minX, y: minY }, { x: maxX, y: minY },
-        { x: maxX, y: maxY }, { x: minX, y: maxY }
-      ], color);
-      toast('📐 Идеальный прямоугольник!');
+      if (Math.abs(w - h) < Math.max(w, h) * .18) {
+        // стороны почти равны → идеальный квадрат
+        const side = (w + h) / 2, mx = (minX + maxX) / 2, my = (minY + maxY) / 2;
+        drawPerfectPolygon([
+          { x: mx - side / 2, y: my - side / 2 }, { x: mx + side / 2, y: my - side / 2 },
+          { x: mx + side / 2, y: my + side / 2 }, { x: mx - side / 2, y: my + side / 2 }
+        ], color);
+        toast('📐 Идеальный квадрат!');
+      } else {
+        drawPerfectPolygon([
+          { x: minX, y: minY }, { x: maxX, y: minY },
+          { x: maxX, y: maxY }, { x: minX, y: maxY }
+        ], color);
+        toast('📐 Идеальный прямоугольник!');
+      }
     } else {
       drawPerfectPolygon(corners, color);
       toast('📐 Идеальный ' + (POLY_NAMES[m] || 'многоугольник') + '!');
@@ -1543,8 +1583,8 @@ function trySnapShape(rawPts, color) {
     return;
   }
 
-  /* --- углов не нашли, но форма кругловата --- */
-  if (circleScore < .22 && r > 18 && restoreTopSnapshot()) {
+  /* --- чётких углов нет, но форма кругловата --- */
+  if (circleScore < .13 && r > 18 && restoreTopSnapshot()) {
     drawPerfectCircle(cx, cy, r, color);
     toast('📐 Идеальный круг!');
     tone(950, .08, .12);
